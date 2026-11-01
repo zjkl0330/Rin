@@ -654,7 +654,8 @@ html {
 .rin-cyber-grid-bg {
   position: fixed;
   inset: 0;
-  z-index: 0;
+  /* 背景层：必须是负层级，否则会盖在设置卡片、正文之上（同层后渲染者胜） */
+  z-index: -1;
   pointer-events: none;
   background-image:
     linear-gradient(color-mix(in srgb, var(--theme, #5ab0d8) 9%, transparent) 1px, transparent 1px),
@@ -963,6 +964,41 @@ body.rin-reading-mode [data-rin-widget] {
     translate: 0 -50%;
     transition-delay: 320ms;
   }
+}
+
+/* ⑨ 设置页开关（radix Switch）：规则必须全局注册。
+   踩坑记录：这组样式原先放在 client/src/utils/thumb.css，只被 settings.tsx 顶部
+   import。构建按路由拆 chunk，主题设置页（settings-theme.tsx）没有那条 import，
+   开关就退化成 0×0 的透明按钮——「开关有的时候彻底消失」就是这么来的：
+   从设置页点进去正常，直接刷新 /admin/theme 就看不见。 */
+.SwitchRoot {
+  width: 42px;
+  height: 25px;
+  border-radius: 9999px;
+  position: relative;
+  /* 行内布局里是 flex 子项，不锁住会被文案挤成 0 宽 */
+  flex: none;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+  @apply bg-neutral-300 dark:bg-neutral-500;
+}
+
+.SwitchRoot[data-state="checked"] {
+  @apply bg-theme;
+}
+
+.SwitchThumb {
+  display: block;
+  width: 21px;
+  height: 21px;
+  border-radius: 9999px;
+  transition: transform 100ms;
+  transform: translateX(2px);
+  will-change: transform;
+  background-color: white;
+}
+
+.SwitchThumb[data-state="checked"] {
+  transform: translateX(19px);
 }
 
 /* 减少动效：只关掉位移与缩放（它们最容易引发不适），状态切换本身仍然瞬时可见。

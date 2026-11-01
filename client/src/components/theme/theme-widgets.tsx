@@ -1,4 +1,5 @@
 import { lazy, Suspense, useContext } from "react";
+import { useLocation } from "wouter";
 import { ClientConfigContext } from "../../state/config";
 import { CursorStyle } from "./cursor-style";
 import { CursorTrail } from "./cursor-trail";
@@ -20,16 +21,21 @@ const SocialFloat = lazy(() => import("./social-float"));
 
 export function ThemeWidgets() {
   const config = useContext(ClientConfigContext);
+  // 后台是干活的地方：飘落花瓣、网格连线、光标拖尾这些装饰会压在设置卡片上
+  // （同一个层叠上下文里后渲染的 canvas 必胜），也会和底部保存条抢视觉焦点。
+  // 在前台保留，进 /admin 一律不挂。
+  const [location] = useLocation();
+  const inAdmin = location.startsWith("/admin");
   const live2dEnabled = config.getBoolean("widget.live2d.enabled");
-  const fireworkEnabled = config.getBoolean("widget.firework.enabled");
-  const ambientEnabled = config.getBoolean("widget.ambient.enabled");
-  const sakuraEnabled = config.getBoolean("widget.sakura.enabled");
-  const ribbonEnabled = config.getBoolean("widget.ribbon.enabled");
-  const powerModeEnabled = config.getBoolean("widget.power_mode.enabled");
-  const noteEnabled = config.getBoolean("widget.note_click.enabled");
+  const fireworkEnabled = config.getBoolean("widget.firework.enabled") && !inAdmin;
+  const ambientEnabled = config.getBoolean("widget.ambient.enabled") && !inAdmin;
+  const sakuraEnabled = config.getBoolean("widget.sakura.enabled") && !inAdmin;
+  const ribbonEnabled = config.getBoolean("widget.ribbon.enabled") && !inAdmin;
+  const powerModeEnabled = config.getBoolean("widget.power_mode.enabled") && !inAdmin;
+  const noteEnabled = config.getBoolean("widget.note_click.enabled") && !inAdmin;
   const preloaderEnabled = config.getBoolean("widget.preloader.enabled");
   const cyberEnabled =
-    config.getBoolean("widget.cyber.title_glitch") || config.getBoolean("widget.cyber.grid_background");
+    (config.getBoolean("widget.cyber.title_glitch") || config.getBoolean("widget.cyber.grid_background")) && !inAdmin;
   const socialEnabled = config.getBoolean("widget.social.enabled");
 
   return (
@@ -51,10 +57,10 @@ export function ThemeWidgets() {
         </Suspense>
       ) : null}
       <CursorStyle />
-      <CursorTrail />
+      {inAdmin ? null : <CursorTrail />}
       {fireworkEnabled ? <Firework /> : null}
       {live2dEnabled ? <Live2DWidget /> : null}
-      <MusicPlayer />
+      {inAdmin ? null : <MusicPlayer />}
       {powerModeEnabled ? (
         <Suspense fallback={null}>
           <PowerMode />

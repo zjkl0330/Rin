@@ -1,6 +1,6 @@
 {
-  "iteration": 19,
-  "since_merge": 1,
+  "iteration": 20,
+  "since_merge": 2,
   "last_merge_iter": 18,
   "history": [
     {
@@ -180,6 +180,14 @@
       "tests": "PASS",
       "sha": "78fc3d1",
       "ts": "2026-11-01T11:55:00Z"
+    },
+    {
+      "iter": 20,
+      "action": "修复 Bug + 性能优化",
+      "summary": "设置页开关彻底消失的根因是 .SwitchRoot/.SwitchThumb 规则只写在 utils/thumb.css 且仅由 settings.tsx 引入：构建按路由拆 chunk，直接刷新 /admin/theme 时开关退化成 0×0 透明按钮（实测 size 0×0 / transparency，先进过设置页则正常 42×25）。规则迁进全局 index.css 并给 flex 容器锁 flex:none。后台不再挂飘落花瓣/网格连线/光标拖尾/音乐播放器（背景 canvas 同层后渲染，会压在设置卡片与底部保存条上），保存条补 iOS safe-area。背景类特效（ribbon 连线、赛博网格）降到 -z-10 内容层之下。新增 fx-loop 统一 30fps 帧循环 + 标签页隐藏跳过 + 按面积自适应点数 + 平方距离与分档批量描边，光标拖尾改为按需渲染并缓存主题色：headless 实测 CPU task 由 11.6% 降到 4.7–7.2%",
+      "build": "PASS",
+      "tests": "PASS",
+      "ts": "2026-11-01T16:25:26Z"
     }
   ],
   "rejected": [
