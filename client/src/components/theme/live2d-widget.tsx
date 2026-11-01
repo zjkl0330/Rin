@@ -17,6 +17,7 @@ import {
 import {
   REMOTE_CDN_CANDIDATES,
   bundledRootFor,
+  isModelFullyCached,
   pickCdnRoot,
   precacheAllModels,
   prefetchModel,
@@ -552,8 +553,12 @@ export function Live2DWidget() {
   // 渲染封顶（帧缓冲分辨率 + 帧率）的重新应用句柄：模型就绪时由就绪门控调用，
   // 设置里改帧率数值时由下方 effect 调用
   const applyRenderCapsRef = useRef<(() => void) | null>(null);
-  const [showActions, setShowActions] = useState(false);
   const [showExprs, setShowExprs] = useState(false);
+  // 本次切换是否命中本地缓存（热切换）：命中时加载遮罩显示"切换中"，
+  // 不再出现"正在下载 x% / y MB"——字节其实是从 Cache Storage 读的，进度条只会误导读数。
+  const [switchWarm, setSwitchWarm] = useState(false);
+  // 切换序号：异步探测缓存是否完整的回调只在仍是同一轮切换时生效
+  const switchSeqRef = useRef(0);
   const [chatOpen, setChatOpen] = useState(false);
   // 工具栏收起成一颗球：点开才展开功能面板（6 个常驻按钮的视觉噪音太大）
   const [dockOpen, setDockOpen] = useState(false);
@@ -802,11 +807,27 @@ export function Live2DWidget() {
     const now = Date.now();
     if (now < switchGuardRef.current) return;
     switchGuardRef.current = now + 800;
+    const seq = ++switchSeqRef.current;
     setActiveModel(name);
     // 进度口径跟着换目标：分母换成目标模型的字节、分子清零。快路径复用的是同一个
     // tracker（不重挂载加载 effect），不换就会「分子是新模型、分母是旧模型」。
     progressTrackerRef.current?.retarget(progressTargetFor(name));
     setProgress(null);
+    // 先按"热切换"呈现，再异步确认目标模型是否整目录已在本地缓存：
+    // 已缓存 → 遮罩一直是"切换中"；缓存不全 → 退回下载进度（此时才真的在联网下载）。
+    // 这样不会出现"点一下换模型，先弹一个 0%→100% 的下载条"。
+    //
+    // furina-mini 恒按热切换处理：它由自研渲染器独立加载，fetch 计数只认 /model/ 路径，
+    // 本来就没有可展示的下载进度；若走"冷切换"分支，遮罩会残留上一个模型的旧进度数字。
+    const warmPreferred = name === "furina-mini";
+    setSwitchWarm(true);
+    void isModelFullyCached(name)
+      .then((full) => {
+        if (seq === switchSeqRef.current) setSwitchWarm(full || warmPreferred);
+      })
+      .catch(() => {
+        if (seq === switchSeqRef.current) setSwitchWarm(warmPreferred);
+      });
     showTips(t("theme.live2d.switch.switching"), 3000);
 
     // furina-mini 是独立渲染器（非 Cubism），changeModel 快路径不适用：
@@ -860,18 +881,6 @@ export function Live2DWidget() {
       t("theme.live2d.talk.poke3"),
     ];
     showTips(tips[Math.floor(Math.random() * tips.length)], 3600);
-  }
-
-  function playCustomAction(name: ActionName) {
-    playActionForCurrent(name);
-    const tipKey =
-      name === "wave"
-        ? t("theme.live2d.actions.tip.wave")
-        : name === "shake"
-          ? t("theme.live2d.actions.tip.shake")
-          : t("theme.live2d.actions.tip.dance");
-    showTips(tipKey, 3600);
-    setShowActions(false);
   }
 
   /** 返回首页：导航到顶域根路径（同标签页，不新开窗口）。后续新增界面时仍回到根路径。 */
@@ -949,7 +958,6 @@ export function Live2DWidget() {
       // 触发球在 dockRef 内，点它交给 onClick 自己 toggle，不会被误判成「外部」
       if (dockRef.current && target && !dockRef.current.contains(target)) {
         setDockOpen(false);
-        setShowActions(false);
         setShowExprs(false);
       }
     };
@@ -958,8 +966,7 @@ export function Live2DWidget() {
         return;
       }
       // Esc 先收二级浮层，再收主面板，逐层退
-      if (showActions || showExprs) {
-        setShowActions(false);
+      if (showExprs) {
         setShowExprs(false);
         return;
       }
@@ -971,7 +978,7 @@ export function Live2DWidget() {
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [dockOpen, showActions, showExprs]);
+  }, [dockOpen, showExprs]);
 
   /**
    * 插件被加载后同步插入 #waifu（其内含 #waifu-canvas > canvas#live2d、#waifu-tips、#waifu-tool）。
@@ -1482,6 +1489,9 @@ export function Live2DWidget() {
       renderedRef.current = cvReady;
       setRendered(cvReady);
       setError(null);
+      // 清掉上一个 Cubism 模型残留的下载读数：这里的模型早就加载好了，
+      // 留着旧的 "x / y MB" 会让遮罩（若此刻未就绪）显示成上一个模型的下载进度。
+      setProgress(null);
       return;
     }
 
@@ -1772,7 +1782,7 @@ export function Live2DWidget() {
     setPos({ left: clampedLeft, top: clampedTop });
   };
 
-  const onWindowUp = (_event: PointerEvent) => {
+  const onWindowUp = () => {
     const state = interactionRef.current;
     interactionRef.current = null;
     window.removeEventListener("pointermove", onWindowMoveRef.current);
@@ -1862,7 +1872,9 @@ export function Live2DWidget() {
     window.addEventListener("pointercancel", onWindowUpRef.current);
   }
 
-  // 工具栏项：数组顺序即面板里从上到下的顺序（动作项单独插在“摸一摸”之后）
+  // 工具栏项：数组顺序即面板里从上到下的顺序。
+  // 表情不在这里——它有专属的浮层按钮（见下方面板里的 expr 块），
+  // 之前两处都渲染了一份，面板里出现两个长得一样的"表情"按钮。
   const dockItems: {
     id: string;
     icon: string;
@@ -1885,21 +1897,6 @@ export function Live2DWidget() {
       onClick: switchToNextModel,
     },
     { id: "poke", icon: "ri-hand-heart-line", label: t("theme.live2d.poke"), onClick: petModel },
-    {
-      id: "expr",
-      icon: "ri-emotion-happy-line",
-      label: t("theme.live2d.expr.button"),
-      pressed: showExprs,
-      onClick: () => {
-        setShowExprs((value) => !value);
-        setShowActions(false);
-      },
-    },
-  ];
-  const dockActionItems: { name: ActionName; icon: string }[] = [
-    { name: "wave", icon: "ri-hand-heart-line" },
-    { name: "shake", icon: "ri-emotion-normal-line" },
-    { name: "dance", icon: "ri-music-2-line" },
   ];
 
   const anchorStyle: React.CSSProperties =
@@ -1953,14 +1950,14 @@ export function Live2DWidget() {
               没有主次（"隐藏"和"聊天"长得一样）、没有按下态，触屏上只剩原生 title 提示。 */}
           <div
             ref={dockRef}
-            className="rin-l2d-dock pointer-events-auto relative flex flex-col items-center gap-1.5"
+            className="rin-l2d-dock pointer-events-auto relative z-20 flex flex-col items-center gap-1.5"
           >
             {/* 面板：data-open 驱动显隐。收起态用 visibility:hidden 而不是只给 opacity:0——
                 看不见的按钮仍然能被 Tab 聚焦、仍然吃点击（live2d-widget 原版就踩了这个坑）。 */}
             <div
               data-open={dockOpen}
               aria-hidden={!dockOpen}
-              style={{ "--rin-n": 7 } as React.CSSProperties}
+              style={{ "--rin-n": 6 } as React.CSSProperties}
               className="rin-l2d-panel rin-glass-pill flex flex-col items-center gap-1 rounded-[26px] p-1.5"
             >
               {dockItems.map((item, index) => (
@@ -1980,50 +1977,6 @@ export function Live2DWidget() {
                   </span>
                 </button>
               ))}
-
-              {/* 动作：本项不收起面板，只向左弹出一排动作按钮 */}
-              <div
-                className="rin-l2d-item relative flex items-center"
-                style={{ "--rin-i": dockItems.length } as React.CSSProperties}
-              >
-                <div
-                  data-open={showActions && !error}
-                  aria-hidden={!showActions}
-                  className="rin-l2d-flyout rin-glass-pill absolute right-full top-1/2 mr-1.5 flex -translate-y-1/2 items-center gap-0.5 rounded-full p-1"
-                >
-                  {dockActionItems.map((action) => (
-                    <button
-                      key={action.name}
-                      type="button"
-                      onClick={() => playCustomAction(action.name)}
-                      aria-label={t(`theme.live2d.actions.${action.name}`)}
-                      className="rin-l2d-btn relative flex h-10 w-10 items-center justify-center rounded-full"
-                    >
-                      <i aria-hidden="true" className={`${action.icon} text-[17px]`} />
-                      <span className="rin-l2d-tip" aria-hidden="true">
-                        {t(`theme.live2d.actions.${action.name}`)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowActions((value) => !value);
-                    setShowExprs(false);
-                  }}
-                  aria-label={t("theme.live2d.actions.button")}
-                  aria-haspopup="true"
-                  aria-expanded={showActions}
-                  data-active={showActions ? "true" : undefined}
-                  className="rin-l2d-btn relative flex h-10 w-10 items-center justify-center rounded-full"
-                >
-                  <i aria-hidden="true" className="ri-magic-line text-[17px]" />
-                  <span className="rin-l2d-tip" aria-hidden="true">
-                    {t("theme.live2d.actions.button")}
-                  </span>
-                </button>
-              </div>
 
               {/* 表情：向左弹出文字列表（表情没有合适图标，文字更直观），最后一项是重置 */}
               <div
@@ -2068,7 +2021,6 @@ export function Live2DWidget() {
                   type="button"
                   onClick={() => {
                     setShowExprs((value) => !value);
-                    setShowActions(false);
                   }}
                   aria-label={t("theme.live2d.expr.button")}
                   aria-haspopup="true"
@@ -2076,7 +2028,7 @@ export function Live2DWidget() {
                   data-active={showExprs ? "true" : undefined}
                   className="rin-l2d-btn relative flex h-10 w-10 items-center justify-center rounded-full"
                 >
-                  <i aria-hidden="true" className={`${dockItems.find((i) => i.id === "expr")?.icon ?? "ri-emotion-happy-line"} text-[17px]`} />
+                  <i aria-hidden="true" className="ri-emotion-happy-line text-[17px]" />
                   <span className="rin-l2d-tip" aria-hidden="true">
                     {t("theme.live2d.expr.button")}
                   </span>
@@ -2089,7 +2041,6 @@ export function Live2DWidget() {
                 data-tone="quiet"
                 onClick={() => {
                   setDockOpen(false);
-                  setShowActions(false);
                   setHidden(true);
                 }}
                 aria-label={t("theme.live2d.hide")}
@@ -2108,7 +2059,6 @@ export function Live2DWidget() {
               type="button"
               onClick={() => {
                 setDockOpen((value) => !value);
-                setShowActions(false);
               }}
               aria-label={t(dockOpen ? "theme.live2d.dock.close" : "theme.live2d.dock.open")}
               aria-expanded={dockOpen}
@@ -2149,25 +2099,33 @@ export function Live2DWidget() {
                 className="pointer-events-none absolute inset-0 select-none"
                 onPointerDown={onPointerDown}
               />
-              {/* 加载进度覆盖层：渲染完成前显示（作为兄弟节点，不干扰 #waifu）。
+              {/* 加载/切换覆盖层：渲染完成前显示（作为兄弟节点，不干扰 #waifu）。
                   pointer-events-none：下载大模型时这块方形占位可能持续几十秒，
-                  纯展示的进度条不该在此期间吃掉下面的点击与滚动。 */}
+                  纯展示的进度条不该在此期间吃掉下面的点击与滚动。
+                  switchWarm（目标模型已整目录缓存）时不显示百分比与字节：字节来自
+                  Cache Storage，进度条从 0 涨到 100% 只会让人以为"又在下载"。 */}
               {!rendered ? (
                 <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl bg-w/95 text-xs shadow-inner dark:bg-neutral-900/95">
                   <div className="h-1.5 w-28 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
                     <div
-                      className="h-full rounded-full bg-theme transition-[width] duration-300"
-                      style={{ width: `${pct ?? 0}%` }}
+                      className={
+                        switchWarm
+                          ? "h-full w-full rounded-full bg-theme/70 animate-pulse"
+                          : "h-full rounded-full bg-theme transition-[width] duration-300"
+                      }
+                      style={switchWarm ? undefined : { width: `${pct ?? 0}%` }}
                     />
                   </div>
                   <span className="t-muted">
-                    {progress
-                      ? pct != null
-                        ? `${t("theme.live2d.loading.downloading")} ${pct}%`
-                        : `${t("theme.live2d.loading.downloading")}…`
-                      : t("theme.live2d.loading.connecting")}
+                    {switchWarm
+                      ? t("theme.live2d.loading.switching")
+                      : progress
+                        ? pct != null
+                          ? `${t("theme.live2d.loading.downloading")} ${pct}%`
+                          : `${t("theme.live2d.loading.downloading")}…`
+                        : t("theme.live2d.loading.connecting")}
                   </span>
-                  {progress ? (
+                  {!switchWarm && progress ? (
                     <span className="t-muted text-[10px]">
                       {formatProgressMb(progress)}
                     </span>
