@@ -1015,6 +1015,7 @@
       },
       "loading": {
         "connecting": "Connecting to the model...",
+        "switching": "Switching model...",
         "downloading": "Downloading model",
         "stalled": "Model download stalled. Check your network and refresh."
       },
@@ -1137,6 +1138,7 @@
       "prev": "Previous track",
       "next": "Next track",
       "unknown_artist": "Unknown artist",
+      "loading": "Loading playlist...",
       "no_source": "Configure an audio source in settings",
       "collapse": "Collapse",
       "expand": "Expand",

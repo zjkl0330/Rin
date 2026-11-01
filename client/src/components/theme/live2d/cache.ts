@@ -126,6 +126,33 @@ function collectModelFiles(manifest: unknown, out: Set<string>): void {
   }
 }
 
+// 收集某个模型**全部**需要缓存的 URL（绝对地址）。
+// furina-mini 没有 index.json（自研渲染器的资源是固定四件套），直接用 MODEL_FILES_BY_NAME；
+// 其余 Cubism 模型必须拉 index.json 递归收集——只按固定表缓存会漏掉 motion3/physics3/exp3
+// 与 index.json 自身，切换时渲染器仍要联网取这些文件，表现为"每次切换都先下载一下"。
+async function collectModelUrls(base: string, name: string): Promise<string[]> {
+  const listed = MODEL_FILES_BY_NAME[name];
+  if (name === "furina-mini") {
+    return (listed ?? []).map((f) => `${base}${f}`);
+  }
+  try {
+    const index = await nativeFetch(`${base}index.json`, { mode: "cors" });
+    if (index.ok) {
+      const manifest = (await index.json()) as { FileReferences?: unknown };
+      const files = new Set<string>();
+      collectModelFiles(manifest, files);
+      // index.json 本身也会被渲染器再次请求，必须一起缓存
+      files.add("index.json");
+      if (files.size > 1) {
+        return [...files].map((f) => (/^https?:/i.test(f) ? f : `${base}${f}`));
+      }
+    }
+  } catch {
+    // 取不到清单（离线/跨域失败）：退回固定表
+  }
+  return (listed ?? []).map((f) => `${base}${f}`);
+}
+
 // 通过 Service Worker 的 CACHE_LIVE2D 消息，把一批 URL 下载并写入本地 Cache Storage。
 // 若 SW 尚未控制页面，则回退为普通 fetch（SW 的 fetch 拦截兜底也会把模型写入缓存）。
 function sendCacheMessage(urls: string[]): void {
@@ -148,18 +175,7 @@ function sendCacheMessage(urls: string[]): void {
 async function precacheModel(cdnRoot: string, name: string): Promise<void> {
   try {
     const base = modelAssetBase(cdnRoot, name);
-    const listed = MODEL_FILES_BY_NAME[name];
-    const urls: string[] = [];
-    if (listed) {
-      for (const f of listed) urls.push(`${base}${f}`);
-    } else {
-      const index = await nativeFetch(`${base}index.json`, { mode: "cors" });
-      if (!index.ok) return;
-      const manifest = (await index.json()) as { FileReferences?: unknown };
-      const files = new Set<string>();
-      collectModelFiles(manifest, files);
-      for (const f of files) urls.push(`${base}${f}`);
-    }
+    const urls = await collectModelUrls(base, name);
     if (urls.length === 0) return;
     if (navigator.serviceWorker?.controller) {
       sendCacheMessage(urls);
@@ -172,14 +188,49 @@ async function precacheModel(cdnRoot: string, name: string): Promise<void> {
   }
 }
 
+// 目标模型是否**整目录**已在本地缓存里。
+//
+// 用途：切换模型前先判断"这一下是本地热切换还是真要联网下载"，据此决定显示
+// "切换中"还是"正在下载 x%"——否则命中缓存时进度条仍按 fetch 字节从 0 涨到 100%，
+// 观感就是"每次切模型都先下载一遍"（实际上字节是从 Cache Storage 读的）。
+//
+// 判定必须按完整清单：只看几个核心文件会把"只缓存了 moc3+贴图"的模型误判成已缓存。
+// 清单本身走 nativeFetch（SW 的 cache-first 会直接返回缓存里的 index.json，几乎零成本）。
+// 结果记在内存里（同一会话内重复切同一模型不必再查）：清空缓存时由 clearModelCache 失效。
+const cachedFullMemo = new Map<string, { at: number; full: boolean }>();
+const CACHED_FULL_TTL = 5 * 60 * 1000;
+
+export async function isModelFullyCached(name: string, cdnRoot?: string): Promise<boolean> {
+  const memo = cachedFullMemo.get(name);
+  if (memo && Date.now() - memo.at < CACHED_FULL_TTL) return memo.full;
+  let full = false;
+  try {
+    const root = cdnRoot ?? (await pickCdnRoot(name));
+    const urls = await collectModelUrls(modelAssetBase(root, name), name);
+    if (urls.length > 0) {
+      const cache = await caches.open(LIVE2D_CACHE_NAME);
+      const hits = await Promise.all(urls.map((u) => cache.match(u, { ignoreVary: true })));
+      full = hits.every(Boolean);
+    }
+  } catch {
+    // 无 Cache Storage（隐私模式等）：视为未缓存，走下载进度
+    full = false;
+  }
+  cachedFullMemo.set(name, { at: Date.now(), full });
+  return full;
+}
+
 // 首次进入后，后台并行预缓存内置模型（furina 远端 + BCSZ1.1 本地）。
 // 每个模型用各自最优根（BCSZ→打包根，furina→远端 CDN）。
 // 清单只维护在 live2d/models.ts 的 BUILTIN_MODELS，此处不再重复枚举。
 // includeRemoteLarge=false（widget.live2d.preload 关闭时）：跳过只能走远端的大模型
 // （furina moc3 约 95MB），不提前占用带宽与磁盘；当前展示模型仍会正常下载。
 export function precacheAllModels(includeRemoteLarge = true): void {
+  // furina-mini 虽然也走远端根，但整套仅 2.4MB 且是默认模型：关掉 preload 时也照常
+  // 预缓存，否则它永远只有浏览器 HTTP 缓存、Cache Storage 里是空的，
+  // "是否已缓存"判定为否，切回它时遮罩会退回"下载"形态。
   const jobs = BUILTIN_MODELS.filter(
-    (name) => includeRemoteLarge || bundledRootFor(name) !== "",
+    (name) => includeRemoteLarge || name === "furina-mini" || bundledRootFor(name) !== "",
   ).map(async (name) => {
     try {
       const root = await pickCdnRoot(name);
@@ -227,6 +278,7 @@ export async function getModelCacheStats(): Promise<ModelCacheStats> {
 
 // 清空模型缓存（含历史版本桶），下次进入会重新下载。
 export async function clearModelCache(): Promise<void> {
+  cachedFullMemo.clear();
   try {
     const keys = await caches.keys();
     await Promise.all(
@@ -239,5 +291,7 @@ export async function clearModelCache(): Promise<void> {
 
 // 手动"立即下载全部模型"：无视 preload 开关，强制把范围兜底打开。
 export function downloadAllModels(): void {
+  // 手动下载会改变缓存状态，先让"是否已完整缓存"的记忆失效，下次切换重新判定
+  cachedFullMemo.clear();
   precacheAllModels(true);
 }

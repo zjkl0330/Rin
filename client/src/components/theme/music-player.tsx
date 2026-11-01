@@ -33,6 +33,14 @@ type MetingQuery = {
   id?: string;
 };
 
+// meting 服务的接口路径。后台填的地址可能带 `/api`（用户拿到的就是这个形式，
+// 如 https://music.zjkl.dpdns.org/api），也可能只填站点根；两种都要能拼出 `/api?...`，
+// 否则会变成 `/api/api?...` 直接 404。
+function metingEndpoint(apiBase: string): string {
+  const base = apiBase.trim().replace(/\/+$/, "");
+  return /\/api$/i.test(base) ? base : `${base}/api`;
+}
+
 // 从 meting 服务拉取歌单/搜索结果，返回可直接播放的曲目列表。
 // meting 的 playlist/search 响应每项已自带带鉴权的 url/pic/lrc。
 async function fetchMetingTracks(apiBase: string, query: MetingQuery): Promise<PlayerTrack[]> {
@@ -41,7 +49,7 @@ async function fetchMetingTracks(apiBase: string, query: MetingQuery): Promise<P
     type: query.type || "playlist",
     id: query.id || "",
   });
-  const response = await fetch(`${apiBase.replace(/\/+$/, "")}/api?${params.toString()}`, {
+  const response = await fetch(`${metingEndpoint(apiBase)}?${params.toString()}`, {
     headers: { Accept: "application/json" },
   });
   if (!response.ok) {
@@ -85,6 +93,7 @@ export function MusicPlayer() {
   const { t } = useTranslation();
   const [staticTracks] = useState<PlayerTrack[]>(() => parseTracks(config.get("widget.player.audio")));
   const [metingTracks, setMetingTracks] = useState<PlayerTrack[]>([]);
+  const [metingLoading, setMetingLoading] = useState(false);
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -130,6 +139,9 @@ export function MusicPlayer() {
       return;
     }
     let cancelled = false;
+    // 区分"歌单还在路上"和"确实没配源"：不区分的话，请求返回前那一两秒
+    // 会先闪一条"请在后台配置音频源"，看起来像配置错了。
+    setMetingLoading(true);
     fetchMetingTracks(metingApi, metingQuery)
       .then((tracks) => {
         if (!cancelled) {
@@ -138,6 +150,9 @@ export function MusicPlayer() {
       })
       .catch(() => {
         // keep static tracks as fallback when meting fetch fails
+      })
+      .finally(() => {
+        if (!cancelled) setMetingLoading(false);
       });
     return () => {
       cancelled = true;
@@ -218,6 +233,11 @@ export function MusicPlayer() {
     }
   }, [trackUrl, enabled, autoplay]);
 
+  // 连播失败计数：上游（网易）对部分歌曲返回 404/500（版权或试流限制），
+  // 音频元素触发 error 时自动跳下一首；连续失败达到列表长度说明整单都不可播，
+  // 停下来避免无限空转。
+  const consecutiveFailRef = useRef(0);
+
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) {
@@ -237,11 +257,31 @@ export function MusicPlayer() {
         setPlaying(false);
       }
     };
+    const onError = () => {
+      if (tracks.length <= 1) {
+        setPlaying(false);
+        return;
+      }
+      consecutiveFailRef.current += 1;
+      if (consecutiveFailRef.current >= tracks.length) {
+        consecutiveFailRef.current = 0;
+        setPlaying(false);
+        return;
+      }
+      setIndex((current) => (current + 1) % tracks.length);
+    };
+    const onPlaying = () => {
+      consecutiveFailRef.current = 0;
+    };
     audio.addEventListener("timeupdate", onTimeUpdate);
     audio.addEventListener("ended", onEnded);
+    audio.addEventListener("error", onError);
+    audio.addEventListener("playing", onPlaying);
     return () => {
       audio.removeEventListener("timeupdate", onTimeUpdate);
       audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("error", onError);
+      audio.removeEventListener("playing", onPlaying);
     };
   }, [tracks.length]);
 
@@ -274,8 +314,11 @@ export function MusicPlayer() {
     return (
       <div className="fixed bottom-2 left-2 z-40" data-rin-widget="player">
         <div className="rin-glass flex items-center gap-2 rounded-2xl border border-black/10 bg-w px-3 py-2.5 text-sm shadow-2xl dark:border-white/10 t-primary">
-          <i className="ri-music-2-line text-theme" aria-hidden="true" />
-          <span>{t("theme.player.no_source")}</span>
+          <i
+            className={metingLoading ? "ri-loader-4-line animate-spin text-theme" : "ri-music-2-line text-theme"}
+            aria-hidden="true"
+          />
+          <span>{metingLoading ? t("theme.player.loading") : t("theme.player.no_source")}</span>
         </div>
       </div>
     );
