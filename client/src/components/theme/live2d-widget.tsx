@@ -559,6 +559,9 @@ export function Live2DWidget() {
   const [switchWarm, setSwitchWarm] = useState(false);
   // 切换序号：异步探测缓存是否完整的回调只在仍是同一轮切换时生效
   const switchSeqRef = useRef(0);
+  // 是否已经切换过模型（首屏 vs 换模型）：切换后即使进度还没起来，也知道
+  // 这一刻在等的是新模型，文案该说"下载"而不是"连接"。
+  const switchedOnceRef = useRef(false);
   const [chatOpen, setChatOpen] = useState(false);
   // 工具栏收起成一颗球：点开才展开功能面板（6 个常驻按钮的视觉噪音太大）
   const [dockOpen, setDockOpen] = useState(false);
@@ -808,6 +811,7 @@ export function Live2DWidget() {
     if (now < switchGuardRef.current) return;
     switchGuardRef.current = now + 800;
     const seq = ++switchSeqRef.current;
+    switchedOnceRef.current = true;
     setActiveModel(name);
     // 进度口径跟着换目标：分母换成目标模型的字节、分子清零。快路径复用的是同一个
     // tracker（不重挂载加载 effect），不换就会「分子是新模型、分母是旧模型」。
@@ -2123,7 +2127,9 @@ export function Live2DWidget() {
                         ? pct != null
                           ? `${t("theme.live2d.loading.downloading")} ${pct}%`
                           : `${t("theme.live2d.loading.downloading")}…`
-                        : t("theme.live2d.loading.connecting")}
+                        : switchedOnceRef.current
+                          ? `${t("theme.live2d.loading.downloading")}…`
+                          : t("theme.live2d.loading.connecting")}
                   </span>
                   {!switchWarm && progress ? (
                     <span className="t-muted text-[10px]">

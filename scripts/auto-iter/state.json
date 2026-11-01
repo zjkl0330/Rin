@@ -1,7 +1,7 @@
 {
   "iteration": 18,
-  "since_merge": 5,
-  "last_merge_iter": 13,
+  "since_merge": 0,
+  "last_merge_iter": 18,
   "history": [
     {
       "iter": 1,
@@ -169,7 +169,7 @@
       "summary": "看板娘：预缓存改为按 index.json 全量（此前 BCSZ 只缓存 moc3+贴图，切换时仍联网取 motion/physics/index.json，遮罩显示下载进度）；新增 isModelFullyCached，整目录命中时遮罩只显示「正在切换模型…」不显示下载读数；furina-mini 恒按热切换处理并清掉上一个模型的残留进度；删除重复的表情按钮（面板里出现过两个）、移除动作面板；dock 提层到 z-20 修暗色下浮层被模型遮罩压住导致文字不可见。音乐：meting 地址兼容带 /api 的写法、默认接 netease 源、不可播曲目自动跳过、新增「歌单加载中」态",
       "build": "PASS",
       "tests": "PASS",
-      "sha": "",
+      "sha": "1c4a399",
       "ts": "2026-11-01T08:35:00Z"
     }
   ],
