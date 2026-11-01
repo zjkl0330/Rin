@@ -154,15 +154,41 @@ async function collectModelUrls(base: string, name: string): Promise<string[]> {
 }
 
 // 通过 Service Worker 的 CACHE_LIVE2D 消息，把一批 URL 下载并写入本地 Cache Storage。
-// 若 SW 尚未控制页面，则回退为普通 fetch（SW 的 fetch 拦截兜底也会把模型写入缓存）。
-function sendCacheMessage(urls: string[]): void {
+//
+// 为什么不能只看 controller：首次访问时页面往往还没有被 SW 接管（注册/激活在首屏之后），
+// controller 为 null，此前这里直接跳过 → 预缓存一次都没执行（线上实测 36s 后
+// Cache Storage 仍只有 1 条）。现在依次尝试：controller → registration.active（未被
+// 控制也能收消息）→ 页面自己 fetch 后直写缓存桶（与 SW 同名，读得到）。
+async function sendCacheMessage(urls: string[]): Promise<void> {
   try {
-    const controller = navigator.serviceWorker?.controller;
-    if (controller) {
-      controller.postMessage({ type: "CACHE_LIVE2D", urls });
+    const ctrl = navigator.serviceWorker?.controller;
+    if (ctrl) {
+      ctrl.postMessage({ type: "CACHE_LIVE2D", urls });
+      return;
+    }
+    // ready 在"没有注册"时会永远挂起，先确认确实有注册再等
+    const regs = await navigator.serviceWorker?.getRegistrations?.();
+    if (regs && regs.length > 0) {
+      const reg = await navigator.serviceWorker.ready;
+      const sw = reg?.active ?? reg?.waiting ?? reg?.installing;
+      if (sw) {
+        sw.postMessage({ type: "CACHE_LIVE2D", urls });
+        return;
+      }
     }
   } catch {
-    // SW 不可用则不强制
+    // SW 不可用则走下面的直写
+  }
+  try {
+    const cache = await caches.open(LIVE2D_CACHE_NAME);
+    await Promise.allSettled(
+      urls.map(async (u) => {
+        const res = await nativeFetch(u, { mode: "cors" });
+        if (res.ok) await cache.put(u, res.clone());
+      }),
+    );
+  } catch {
+    // 无 Cache Storage：放弃预缓存，不影响主流程
   }
 }
 
@@ -177,12 +203,7 @@ async function precacheModel(cdnRoot: string, name: string): Promise<void> {
     const base = modelAssetBase(cdnRoot, name);
     const urls = await collectModelUrls(base, name);
     if (urls.length === 0) return;
-    if (navigator.serviceWorker?.controller) {
-      sendCacheMessage(urls);
-    } else {
-      // SW 未控制：普通 fetch 预取（生产环境 SW 的 fetch 拦截会把这些响应回写缓存）
-      await Promise.allSettled(urls.map((u) => nativeFetch(u, { mode: "cors" })));
-    }
+    await sendCacheMessage(urls);
   } catch {
     // 预缓存失败不影响主流程
   }

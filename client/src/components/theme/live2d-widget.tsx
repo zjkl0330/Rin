@@ -1430,9 +1430,12 @@ export function Live2DWidget() {
   //
   // 延后到首屏模型渲染完成、浏览器空闲时再下：首屏自己在拉 2.4MB，同时开 BCSZ 的 22MB
   // 会抢带宽，反而让首屏更慢。只跑一次（precachedRef），切模型不再重复触发。
+  //
+  // 另有一条 6s 兜底：渲染失败（无 WebGL、模型源挂了）的用户 rendered 永远是 false，
+  // 只靠 rendered 触发的话他们一次都不会预缓存 —— 实测线上就出现过 36s 只有 1 条缓存。
   const precachedRef = useRef(false);
-  useEffect(() => {
-    if (!rendered || precachedRef.current) return;
+  const precacheOnce = () => {
+    if (precachedRef.current) return;
     precachedRef.current = true;
     const run = () => precacheAllModels(configRef.current.getBoolean("widget.live2d.preload"));
     const ric = (
@@ -1444,9 +1447,18 @@ export function Live2DWidget() {
       ric(run, { timeout: 8000 });
       return;
     }
-    const timer = window.setTimeout(run, 4000);
-    return () => window.clearTimeout(timer);
+    window.setTimeout(run, 4000);
+  };
+  useEffect(() => {
+    if (!rendered) return;
+    precacheOnce();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rendered]);
+  useEffect(() => {
+    const timer = window.setTimeout(precacheOnce, 6000);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ---- FurinaMini（自研渲染器）渲染分支 ----
   // furina-mini 不经过 Cubism 插件：全套资源约 2.4MB（38KB 渲染器 + 1.65MB 量化网格
