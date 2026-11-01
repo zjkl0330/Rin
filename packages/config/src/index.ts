@@ -51,8 +51,9 @@ export const CLIENT_CONFIG_DEFAULTS = new Map(
     "widget.player.audio": "[]",
     // 站点自带可用的 meting 服务（仅 netease 源能取流），留空则只能用下方 audio 静态列表
     "widget.player.meting_api": "https://music.zjkl.dpdns.org/api",
-    // 默认网易云热歌榜：改 id 即可换歌单（type 支持 playlist / search）
-    "widget.player.meting": '{"server":"netease","type":"playlist","id":"3778678"}',
+    // 默认搜索「轻涟」（芙宁娜角色曲）：type=search 时 id 就是关键词，
+    // 换歌只要改 id / type（playlist 用歌单 id，track 用单曲 id）
+    "widget.player.meting": '{"server":"netease","type":"search","id":"轻涟"}',
     "widget.share.enabled": false,
     "widget.share.networks": "weibo,qq,weixin,telegram,x,facebook,qzone,copy",
     "widget.anchor.enabled": false,

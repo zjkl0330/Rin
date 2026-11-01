@@ -954,8 +954,8 @@
         }
       },
       "preload": {
-        "title": "预缓存所有模型",
-        "desc": "关闭时不预下载远端大模型（约95MB）。"
+        "title": "预下载 + 预渲染",
+        "desc": "开启后空闲时下载全部内置模型，并在后台把 Cubism 渲染器预热好。切换模型几乎不用等，代价是多占一份显存（约 20–50MB）。"
       },
       "custom": {
         "title": "模型管理",
@@ -1148,12 +1148,12 @@
       "volume": "音量",
       "meting_api": {
         "title": "Meting API 地址",
-        "desc": "meting 服务的 API 基础地址，如 https://music.example.com/api",
+        "desc": "meting 服务的 API 基础地址，如 https://music.zjkl.dpdns.org/api",
         "label": "API 地址"
       },
       "meting": {
         "title": "Meting 源",
-        "desc": "查询条件 JSON：server/type/id。配置后将从 meting 拉取歌单并优先播放",
+        "desc": "查询条件 JSON：server/type/id。type=search 时 id 就是搜索关键词（默认搜「轻涟」）；type=playlist 时 id 是歌单号",
         "label": "查询条件"
       }
     },

@@ -27,6 +27,55 @@ function parseTracks(raw: unknown): PlayerTrack[] {
   }
 }
 
+// meting 的 url 是"取流地址"，上游对无版权/无音源的曲目直接给 404/500。
+// 不预检的话，默认曲目恰好是取不到流的那首时：播放器先静音卡一下，再靠
+// "播放失败自动下一首"跳过去，用户体感就是"点了没反应/第一首放不出来"。
+// 这里用 <audio> preload=metadata 并发探前 N 首（不能改 fetch：网易 CDN 不给 CORS 头，
+// 但 <audio> 播放不受同源策略限制），明确报错的剔除，超时未决的保留（宁多勿少）。
+function probePlayable(tracks: PlayerTrack[], limit = 6, timeoutMs = 3500): Promise<PlayerTrack[]> {
+  if (tracks.length === 0) {
+    return Promise.resolve(tracks);
+  }
+  const head = tracks.slice(0, limit);
+  return new Promise((resolve) => {
+    // undefined = 还没结论（超时按可用处理），true/false = 已探测
+    const verdict: (boolean | undefined)[] = new Array(head.length).fill(undefined);
+    let left = head.length;
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      const kept = head.filter((_, i) => verdict[i] !== false);
+      resolve(kept.length > 0 ? [...kept, ...tracks.slice(limit)] : tracks);
+    };
+    const timer = window.setTimeout(finish, timeoutMs);
+    head.forEach((item, i) => {
+      const probe = document.createElement("audio");
+      const settle = (pass: boolean) => {
+        probe.onloadedmetadata = null;
+        probe.onerror = null;
+        try {
+          probe.removeAttribute("src");
+          probe.load();
+        } catch {
+          // ignore
+        }
+        if (settled) return;
+        verdict[i] = pass;
+        left -= 1;
+        if (left === 0) {
+          window.clearTimeout(timer);
+          finish();
+        }
+      };
+      probe.preload = "metadata";
+      probe.onloadedmetadata = () => settle(true);
+      probe.onerror = () => settle(false);
+      probe.src = item.url;
+    });
+  });
+}
+
 type MetingQuery = {
   server?: string;
   type?: string;
@@ -143,6 +192,7 @@ export function MusicPlayer() {
     // 会先闪一条"请在后台配置音频源"，看起来像配置错了。
     setMetingLoading(true);
     fetchMetingTracks(metingApi, metingQuery)
+      .then((tracks) => (tracks.length > 0 ? probePlayable(tracks) : tracks))
       .then((tracks) => {
         if (!cancelled) {
           setMetingTracks(tracks);

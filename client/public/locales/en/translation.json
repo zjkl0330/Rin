@@ -954,8 +954,8 @@
         }
       },
       "preload": {
-        "title": "Pre-cache all models",
-        "desc": "Off by default: skips downloading the large remote model (~95MB)."
+        "title": "Preload & prerender",
+        "desc": "Downloads all built-in models when idle and warms up the Cubism renderer in the background, so switching models is nearly instant. Costs one extra copy of video memory (about 20-50 MB)."
       },
       "custom": {
         "title": "Model Management",
@@ -1148,12 +1148,12 @@
       "volume": "Volume",
       "meting_api": {
         "title": "Meting API URL",
-        "desc": "Base URL of the meting service, e.g. https://music.example.com/api",
+        "desc": "Base URL of the meting API, e.g. https://music.zjkl.dpdns.org/api",
         "label": "API URL"
       },
       "meting": {
         "title": "Meting source",
-        "desc": "Query condition JSON: server/type/id. When set, tracks will be fetched from meting and played first",
+        "desc": "Query JSON: server/type/id. With type=search, id is the keyword (default: \"轻涟\"); with type=playlist, id is the playlist id",
         "label": "Query"
       }
     },

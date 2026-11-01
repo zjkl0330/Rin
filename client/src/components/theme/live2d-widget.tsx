@@ -44,6 +44,7 @@ import {
   resolveDefaultName,
 } from "./live2d/models";
 import { buildOverrideStyleCss, OVERRIDE_STYLE_ID } from "./live2d/override-style";
+import { planModelSwitch } from "./live2d/switch-plan";
 import { type ProgressState, formatProgressMb, progressPercent } from "./live2d/progress-format";
 import { clampDragPosition, loadSavedPos, saveSavedPos } from "./live2d/saved-pos";
 import {
@@ -102,6 +103,10 @@ function resolveEngineRoot(): Promise<string> {
 // 透明像素判定阈值：alpha 低于该值视为"透明区域"，点击透传给后面的元素。
 // 同时用作轮廓测量的阈值（见 live2d/silhouette.ts）。
 const CLICK_ALPHA_THRESHOLD = 16;
+
+// 预渲染目标：显示 furina-mini 时在后台先把这个 Cubism 模型初始化好并藏起来。
+// 选 BCSZ1.1 是因为它在本地打包根里（不走远端 95MB 的 furina），体积与解析开销最小。
+const PREWARM_MODEL = "BCSZ1.1";
 
 // 轮廓贴合会写进画布行内样式的属性（卸载/换模型时按这份清单清理）。
 // -webkit-clip-path 是给只认前缀的老内核（iOS 13.0 及以下）的双写，两者同时生效。
@@ -583,6 +588,23 @@ export function Live2DWidget() {
   const furinaActiveRef = useRef(false);
   const furinaUnmountedRef = useRef(false);
   const furinaScrollFloatCleanupRef = useRef<(() => void) | null>(null);
+  // ---- Cubism 实例保活 ----
+  // 切到 furina-mini 时，此前走的是 setModelVersion+1（重挂载）：cleanup 会把 #waifu
+  // 连同 canvas、WebGL 上下文一起删掉，切回来要重新加载引擎脚本、重新 initWidget、
+  // 重新编译 shader、重新上传 22MB 纹理 —— 实测一次往返 4s 左右，用户观感就是
+  // "明明缓存了怎么还要重新渲染一遍"。
+  // 现在：Cubism 已初始化过就只「藏起来 + 停渲染循环」，实例和上下文都留着；
+  // 切回来若是同一个模型，直接显示（0 重建），换模型才走 changeModel。
+  const cubismAliveRef = useRef(false);
+  // 该实例是否已经"画完一帧"（预渲染完成的判定，与 renderedRef 区分：
+  // furina-mini 显示时 renderedRef 为 true，但 Cubism 可能还在后台加载）
+  const cubismReadyRef = useRef(false);
+  // 当前 Cubism 实例里真正加载着的模型名（同模型恢复时据此跳过 changeModel）
+  const cubismModelRef = useRef<string>("");
+  const cubismSuspendRef = useRef<(() => void) | null>(null);
+  const cubismResumeRef = useRef<(() => void) | null>(null);
+  // 正在后台预渲染的模型名（此时用户若切到它，只需亮出容器，别再去 changeModel 打断）
+  const prewarmTargetRef = useRef<string>("");
   const lastProgressAtRef = useRef(Date.now());
   // 换模型的连点闸门：两次切换至少间隔 800ms。
   // 没有它时快速双击会在同一批渲染里读到旧 activeModel，连开两次重挂载，
@@ -834,19 +856,59 @@ export function Live2DWidget() {
       });
     showTips(t("theme.live2d.switch.switching"), 3000);
 
-    // furina-mini 是独立渲染器（非 Cubism），changeModel 快路径不适用：
-    // 进入/离开都重挂载，由两个渲染 effect 按分支接管（离开后 Cubism 尚未就绪，
-    // 下方 canChange 判定自然为 false，同样落到重挂载兜底）
-    if (name === "furina-mini") {
-      setModelVersion((v) => v + 1);
+    // 分支决策交给纯函数（见 live2d/switch-plan.ts，含单测）。这里的每一档
+    // 都对应一次真实测量过的代价：suspend/resume ≈0，change 要重建模型，
+    // remount 要重建整个引擎 —— 能选低档就绝不往上跳。
+    const app = (window as unknown as { __rinLive2dApp?: unknown }).__rinLive2dApp;
+    const plan = planModelSwitch({
+      target: name,
+      current: activeModel,
+      engineAvailable: !!(app && typeof (app as { changeModel?: unknown }).changeModel === "function"),
+      cubismAlive: cubismAliveRef.current,
+      cubismReady: cubismReadyRef.current,
+      cubismModel: cubismModelRef.current,
+      prewarming: prewarmTargetRef.current,
+    });
+
+    // furina-mini 只藏不拆：实例、上下文、纹理全留着，切回来才不用重新 initWidget
+    if (plan === "suspend") {
+      cubismSuspendRef.current?.();
+      renderedRef.current = true;
+      setRendered(true);
+      setError(null);
+      setProgress(null);
       return;
     }
-
-    const app = (window as unknown as { __rinLive2dApp?: unknown }).__rinLive2dApp;
-    const canChange = app && typeof (app as { changeModel?: unknown }).changeModel === "function";
+    // 目标正在后台预渲染：亮出容器等它画完即可。
+    // 这里绝不能 changeModel —— 会把正在进行的加载打断，反而不如不做预渲染。
+    if (plan === "prewarm-wait") {
+      cubismResumeRef.current?.();
+      return;
+    }
+    // 实例里已经就是这个模型、而且画完过一帧（刚从 furina-mini 藏起来的那份，
+    // 或后台预渲染好的）：直接亮画面，不换模型、不重建、不重新上传纹理。
+    if (plan === "resume") {
+      cubismResumeRef.current?.();
+      renderedRef.current = true;
+      setRendered(true);
+      setError(null);
+      setProgress(null);
+      document.getElementById("live2d")?.classList.add("rin-live2d-ready");
+      return;
+    }
+    if (plan === "noop") {
+      // 目标 furina-mini 且 Cubism 从未初始化：没有任何东西需要拆
+      return;
+    }
+    const canChange = plan === "change";
     // 渲染器就绪 → 复用实例直接换模型。内置模型按目标选根（BCSZ→打包根、furina→远端）；
     // 自定义模型直接用其配置的 .model3.json url 加载。
     if (canChange) {
+      // 先前可能被 furina-mini 藏起来了：先亮出容器，否则 changeModel 加载好了也看不见
+      cubismResumeRef.current?.();
+      // 若后台还在预渲染另一个模型：changeModel 会把它顶掉，接管之后
+      // 就绪轮询必须回到正常流程（否则会把 cubismModelRef 写回预渲染目标）
+      prewarmTargetRef.current = "";
       // 收起当前模型，显示加载态，等待新模型就绪后淡入
       renderedRef.current = false;
       setRendered(false);
@@ -865,9 +927,13 @@ export function Live2DWidget() {
         }
         try {
           (app as { changeModel: (u: string) => void }).changeModel(indexUrl);
+          // 实例里现在是这个模型了，但还没画出来：就绪态等轮询确认
+          cubismModelRef.current = name;
+          cubismReadyRef.current = false;
           // 重新开启"就绪门控"轮询，等新模型 CompleteSetup 后淡入
           readyPollStartRef.current?.();
         } catch (err) {
+          cubismModelRef.current = "";
           setError(err instanceof Error ? err.message : String(err));
         }
       })();
@@ -1006,17 +1072,51 @@ export function Live2DWidget() {
 
   useEffect(() => {
     // furina-mini 走独立渲染器分支（见下方 FurinaMini effect），不初始化 Cubism 插件。
-    // 两个 effect 同依赖 [modelVersion]：进入 furina-mini 时这里整体跳过；
-    // 离开时 furina 实例只隐藏不销毁（保活），由本 effect 挂 Cubism。
-    if (activeModel === "furina-mini") return;
+    // 两个 effect 同依赖 [modelVersion]：离开 furina 时才由本 effect 挂 Cubism。
+    //
+    // 例外：开启「预缓存所有模型」时，furina-mini 显示期间会在后台把 Cubism 预渲染好
+    // （隐藏 + 停循环）。这样用户第一次点"换模型"到 Cubism 模型时画面直接出现，
+    // 不用先等 initWidget / shader 编译 / 纹理上传 —— 也就是"预下载"之外真正缺的
+    // 那半句"预渲染"。
+    //
+    // 预渲染目标固定 BCSZ1.1（本地打包根、无需联网下 95MB）；只在非窄屏做，
+    // 避免在内存/显存紧张的手机上常驻一份 22MB 纹理。
+    const preloadOn = configRef.current.getBoolean("widget.live2d.preload");
+    // jsdom / 老内核没有 matchMedia：取不到就按"窄屏"处理，宁可不预渲染
+    const narrow =
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function" ||
+      window.matchMedia("(max-width: 767px)").matches;
+    const prewarm = activeModel === "furina-mini" && preloadOn && !narrow && !cubismAliveRef.current;
+    if (activeModel === "furina-mini" && !prewarm) return;
+    // 本次要装载的模型：预渲染时装 BCSZ1.1，正常情况装 activeModel
+    const bootModel: string = prewarm ? PREWARM_MODEL : activeModel;
+    // 预渲染阶段由 prewarmTargetRef 表达（effect 外的 switchModel 也要能改它）：
+    // 装完或中途被 changeModel 接管时清空，之后本 effect 内的就绪轮询按正常流程走。
 
     let disposed = false;
+    // 预渲染期间临时改写的 localStorage.modelId 原值（装完即还原）
+    let prewarmPrevModelId: string | null = null;
+    const restorePrewarmModelId = () => {
+      try {
+        if (prewarmPrevModelId === null) {
+          localStorage.removeItem("modelId");
+        } else {
+          localStorage.setItem("modelId", prewarmPrevModelId);
+        }
+      } catch {
+        // ignore
+      }
+    };
 
     // 每次重挂载都从"未就绪"开始：否则从上一个模型带着 rendered=true 进来，
     // 加载遮罩不显示、失败也看不出来（表现为"点了换模型就没了"）。
-    renderedRef.current = false;
-    setRendered(false);
-    setError(null);
+    // 预渲染不接管画面（furina-mini 正在显示），不能碰 rendered 状态。
+    if (!prewarm) {
+      renderedRef.current = false;
+      setRendered(false);
+      setError(null);
+    }
 
     // ---- 首次挂载，清掉可能残留的插件会话状态，保证每次挂载都从干净状态开始 ----
     // 本次挂载加载 activeModel（首屏即渲染期解析出的默认模型）。首屏由 pickCdnRoot(activeModel)
@@ -1049,10 +1149,13 @@ export function Live2DWidget() {
     // 分子按 furina 涨、分母还是上一个模型的，界面显示"100% + 73.8 / 5.6 MB"。
     const tracker = installProgressTracker(
       (p) => {
+        // 预渲染不接管界面：进度条与读数是给"正在等的那个模型"看的，
+        // 后台装 BCSZ 时把数字写进 UI 会让用户以为当前模型在重载
+        if (prewarmTargetRef.current) return;
         lastProgressAtRef.current = Date.now();
         if (!disposed) setProgress(p);
       },
-      progressTargetFor(activeModel),
+      progressTargetFor(bootModel),
       layoutConfig,
     );
     progressTrackerRef.current = tracker;
@@ -1094,13 +1197,39 @@ export function Live2DWidget() {
       // 重置内部模型状态，避免轮询把还未真正切换的旧模型（_state 仍为 22）误判为就绪。
       const gatedAt = Date.now();
       readyPollTimer = window.setInterval(() => {
-        if (disposed || renderedRef.current) {
+        // 预渲染时 renderedRef 由 furina-mini 掌管（一直是 true），不能拿它当"已就绪"
+        if (disposed || (!prewarmTargetRef.current && renderedRef.current)) {
           stopReadyPoll();
           return;
         }
         if (Date.now() - gatedAt < 600) return;
         const model = getLive2dModel();
         if (model && model._state === 22) {
+          cubismReadyRef.current = true;
+          if (prewarmTargetRef.current) {
+            cubismModelRef.current = prewarmTargetRef.current;
+            restorePrewarmModelId();
+            prewarmTargetRef.current = "";
+            const waifu = document.getElementById("waifu");
+            if (furinaActiveRef.current) {
+              // 用户还在看 furina-mini：藏起来待命，其余什么都不做
+              if (waifu) waifu.style.setProperty("display", "none", "important");
+              setRenderLoopPaused(true);
+            } else {
+              // 用户已经切到 Cubism（就是它）：直接亮出来，不再走一遍加载
+              if (waifu) waifu.style.removeProperty("display");
+              renderedRef.current = true;
+              setRendered(true);
+              setError(null);
+              document.getElementById("live2d")?.classList.add("rin-live2d-ready");
+              patchModelForActions(model);
+              applyRenderCaps();
+              setRenderLoopPaused(false);
+              window.dispatchEvent(new Event("resize"));
+            }
+            stopReadyPoll();
+            return;
+          }
           renderedRef.current = true;
           setRendered(true);
           setError(null);
@@ -1140,7 +1269,8 @@ export function Live2DWidget() {
           return;
         }
         if (Date.now() - lastProgressAtRef.current > 120000) {
-          setError(t("theme.live2d.loading.stalled"));
+          // 预渲染失败不报到界面上：用户看的是 furina-mini
+          if (!prewarm) setError(t("theme.live2d.loading.stalled"));
           stopStallTimer();
         }
       }, 30000);
@@ -1235,6 +1365,28 @@ export function Live2DWidget() {
         setRenderLoopPaused(false);
       }
     };
+    // ---- Cubism 实例保活钩子：切到 furina-mini 时只藏不拆 ----
+    // 只碰 #waifu 的 display 与渲染循环，不动 DOM 结构、不动 WebGL 上下文，
+    // 因此切回来时实例、纹理、已解析的 moc3 全都还在。
+    cubismSuspendRef.current = () => {
+      const waifu = document.getElementById("waifu");
+      // !important：插件在模型加载完成、切页、显示气泡时都会自己改 #waifu 的
+      // display，普通行内样式会被它覆盖 —— 表现为"看着 furina 突然闪出另一个模型"。
+      if (waifu) waifu.style.setProperty("display", "none", "important");
+      // 还在加载中（没画出来）就别停循环：停了就绪轮询与绘制，模型永远起不来
+      if (renderedRef.current) setRenderLoopPaused(true);
+    };
+    cubismResumeRef.current = () => {
+      const waifu = document.getElementById("waifu");
+      if (waifu) waifu.style.removeProperty("display");
+      setRenderLoopPaused(false);
+      // 藏起来这段时间窗口可能改过尺寸，插件按 display:none 量的容器是 0 ——
+      // 亮出来时补一次 resize，让画布按当前容器重算，否则模型会被拉伸。
+      window.setTimeout(() => {
+        if (!disposed) window.dispatchEvent(new Event("resize"));
+      }, 0);
+    };
+
     const onVisibilityChange = () => setTimersPaused(document.hidden);
     const onWindowBlur = () => setTimersPaused(true);
     const onWindowFocus = () => {
@@ -1249,14 +1401,22 @@ export function Live2DWidget() {
         // 不做 WebGL 前置检查：与 Demo 的 live2d-widget 插件行为一致。
         // 插件在运行时直接创建 WebGL 上下文，若浏览器不支持会自行在控制台报错并降级。
 
-        // 1) 探测可用的模型源（按 activeModel：BCSZ1.1 走本地打包根，furina 走远端 CDN）
-        const cdnRoot = await pickCdnRoot(activeModel);
+        // 预渲染让出首屏：furina-mini 自己还在下 2.4MB 并首帧渲染，这时再开一路
+        // 22MB 的 Cubism 会抢带宽、拖慢首屏出现。等 2.5s（首屏基本画完）再开工。
+        if (prewarm) {
+          await new Promise((resolve) => window.setTimeout(resolve, 2500));
+          if (disposed || !furinaActiveRef.current) return; // 用户已经切走了，别装
+          prewarmTargetRef.current = bootModel;
+        }
+
+        // 1) 探测可用的模型源（按 bootModel：BCSZ1.1 走本地打包根，furina 走远端 CDN）
+        const cdnRoot = await pickCdnRoot(bootModel);
         cdnRootRef.current = cdnRoot;
         if (disposed) return;
 
         // 2) 探测到根地址后立即并行预取当前模型的核心文件（moc3/贴图），
         //    不等插件脚本加载，让大体积 moc3 尽早开始下载
-        prefetchModel(cdnRoot, activeModel);
+        prefetchModel(cdnRoot, bootModel);
 
         // 3) 加载样式与插件脚本（均为判重，可安全重复挂载）
         // 引擎根在 effect 一开头就由 patchLive2dApp 发起探测，这里只是取结果。
@@ -1288,7 +1448,9 @@ export function Live2DWidget() {
         //      先下 95MB 才切到自己的模型，而且在生产打包根里取不到它——该根的
         //      model_list 按 vite.config.ts 只声明 ["BCSZ1.1"]，indexOf("furina") 直接 -1
         //      会抛 model_missing；只有 dev 根（rinLive2dLocalCdn）同时列出两者。
-        const customTarget = customModelsRef.current.find((c) => c.id === activeModel);
+        const customTarget = prewarm
+          ? undefined
+          : customModelsRef.current.find((c) => c.id === activeModel);
         const isCustomDefault = !!customTarget;
 
         // 6) 复刻 Demo 的调用方式（cdnPath + modelId；内置模型均为 Cubism5）
@@ -1311,7 +1473,7 @@ export function Live2DWidget() {
         const listedModels = modelList.models ?? [];
         // 占位取"这个根真的有"的内置模型：优先轻的 BCSZ1.1，只有远端根才需要退回 furina。
         const placeholderModel = listedModels.includes("BCSZ1.1") ? "BCSZ1.1" : "furina";
-        const loadFor = isCustomDefault ? placeholderModel : activeModel;
+        const loadFor = isCustomDefault ? placeholderModel : bootModel;
         const resolvedId = listedModels.indexOf(loadFor);
         if (resolvedId < 0) {
           throw new Error(
@@ -1323,7 +1485,10 @@ export function Live2DWidget() {
         }
         // 让插件 initCheck 读到的 modelId 与这里一致（插件会优先用 localStorage 值覆盖 config）。
         // 这是 modelId 的唯一写入点：switchModel 走 changeModel(url)，不再额外写。
+        // 预渲染是"借用"这次写入跑起来的：装完就把原值还回去，免得把用户当前模型的
+        // 下标改成 BCSZ 的（下次正常挂载会装错模型）。
         try {
+          if (prewarm) prewarmPrevModelId = localStorage.getItem("modelId");
           localStorage.setItem("modelId", String(resolvedId));
         } catch {
           // ignore
@@ -1355,10 +1520,29 @@ export function Live2DWidget() {
         // 7) initWidget 同步执行到 r() 的第一步（插入 #waifu）后即返回，
         //    因此在调用返回后立刻把 #waifu 放进 React 容器
         adoptPluginDom();
-      } catch (err) {
-        if (!disposed) {
-          setError(err instanceof Error ? err.message : String(err));
+        // 预渲染：从挂上那一刻就藏起来。否则用户正看着 furina-mini，屏幕上会
+        // 突然多出一块正在加载的 Cubism 画布（插件会自己把 #waifu 设成 display:block）
+        if (prewarm) {
+          const prewaifu = document.getElementById("waifu");
+          if (prewaifu) prewaifu.style.setProperty("display", "none", "important");
         }
+        // 引擎起来了：#waifu 在文档里、实例可用。从这里开始允许"保活"——
+        // 切到 furina-mini 时只藏不拆，切回来直接复用。
+        cubismAliveRef.current = true;
+        cubismModelRef.current =
+          isCustomDefault && customTarget ? customTarget.id : bootModel;
+      } catch (err) {
+        if (disposed) return;
+        // 预渲染失败必须静默：用户正看着 furina-mini，屏幕上突然冒出一条
+        // Cubism 的报错（无 WebGL 的设备上必然发生）比不预渲染糟糕得多。
+        if (prewarm) {
+          prewarmTargetRef.current = "";
+          cubismAliveRef.current = false;
+          document.getElementById("waifu")?.remove();
+          restorePrewarmModelId();
+          return;
+        }
+        setError(err instanceof Error ? err.message : String(err));
       }
     })();
 
@@ -1403,6 +1587,16 @@ export function Live2DWidget() {
       // 切回 Cubism 时 switchModel 会把「已脱离文档的旧实例」当成 canChange=true，
       // 调 changeModel 到幽灵画布上 —— 模型不出现、也不再重挂载，卡死在加载态。
       (window as unknown as Record<string, unknown>).__rinLive2dApp = undefined;
+      // 实例已随 #waifu 一起销毁：保活标记与钩子必须一起清掉，否则下次切回 Cubism
+      // 会以为还能 resume，结果只是把一张不存在的 #waifu 显示出来。
+      cubismAliveRef.current = false;
+      cubismReadyRef.current = false;
+      cubismModelRef.current = "";
+      // 预渲染没跑完就被卸载：临时写进去的 modelId 也要还原
+      if (prewarm) restorePrewarmModelId();
+      if (prewarmTargetRef.current) prewarmTargetRef.current = "";
+      cubismSuspendRef.current = null;
+      cubismResumeRef.current = null;
       document
         .querySelector(`link[data-rin-live2d-widget="${CSS_MARK}"]`)
         ?.remove();
@@ -2118,37 +2312,42 @@ export function Live2DWidget() {
               {/* 加载/切换覆盖层：渲染完成前显示（作为兄弟节点，不干扰 #waifu）。
                   pointer-events-none：下载大模型时这块方形占位可能持续几十秒，
                   纯展示的进度条不该在此期间吃掉下面的点击与滚动。
-                  switchWarm（目标模型已整目录缓存）时不显示百分比与字节：字节来自
-                  Cache Storage，进度条从 0 涨到 100% 只会让人以为"又在下载"。 */}
+                  两种形态：
+                  - 真要下载（!switchWarm）：整块不透明遮罩 + 百分比 + 字节，信息量优先；
+                  - 已缓存、纯等渲染（switchWarm）：不铺白块，只在底部给一颗"正在切换"
+                    小胶囊。模型换帧只需要一两秒，糊一整块白板反而像"整页重载"。 */}
               {!rendered ? (
+                switchWarm ? (
+                  <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center">
+                    <span className="rin-glass-pill flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] t-muted">
+                      <i aria-hidden="true" className="ri-loader-4-line animate-spin text-[13px]" />
+                      {t("theme.live2d.loading.switching")}
+                    </span>
+                  </div>
+                ) : (
                 <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl bg-w/95 text-xs shadow-inner dark:bg-neutral-900/95">
                   <div className="h-1.5 w-28 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
                     <div
-                      className={
-                        switchWarm
-                          ? "h-full w-full rounded-full bg-theme/70 animate-pulse"
-                          : "h-full rounded-full bg-theme transition-[width] duration-300"
-                      }
-                      style={switchWarm ? undefined : { width: `${pct ?? 0}%` }}
+                      className="h-full rounded-full bg-theme transition-[width] duration-300"
+                      style={{ width: `${pct ?? 0}%` }}
                     />
                   </div>
                   <span className="t-muted">
-                    {switchWarm
-                      ? t("theme.live2d.loading.switching")
-                      : progress
-                        ? pct != null
-                          ? `${t("theme.live2d.loading.downloading")} ${pct}%`
-                          : `${t("theme.live2d.loading.downloading")}…`
-                        : switchedOnceRef.current
-                          ? `${t("theme.live2d.loading.downloading")}…`
-                          : t("theme.live2d.loading.connecting")}
+                    {progress
+                      ? pct != null
+                        ? `${t("theme.live2d.loading.downloading")} ${pct}%`
+                        : `${t("theme.live2d.loading.downloading")}…`
+                      : switchedOnceRef.current
+                        ? `${t("theme.live2d.loading.downloading")}…`
+                        : t("theme.live2d.loading.connecting")}
                   </span>
-                  {!switchWarm && progress ? (
+                  {progress ? (
                     <span className="t-muted text-[10px]">
                       {formatProgressMb(progress)}
                     </span>
                   ) : null}
                 </div>
+                )
               ) : null}
               {/* 聊天面板：浮在模型上方，标题/提示跟随当前模型。
                   外层方形已 pointer-events-none，面板自身要重新接管事件。 */}

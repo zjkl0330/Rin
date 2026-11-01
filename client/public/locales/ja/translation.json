@@ -954,8 +954,8 @@
         }
       },
       "preload": {
-        "title": "全モデルを事前キャッシュ",
-        "desc": "有効時は約95MBの大容量モデルを事前取得。"
+        "title": "プリロード + プリレンダー",
+        "desc": "アイドル時に全内蔵モデルをダウンロードし、バックグラウンドで Cubism レンダラーを温めておきます。モデル切替がほぼ待ち時間なしになります。代わりに VRAM を約 20〜50MB 余分に使います。"
       },
       "custom": {
         "title": "モデル管理",
@@ -1148,12 +1148,12 @@
       "volume": "音量",
       "meting_api": {
         "title": "Meting API アドレス",
-        "desc": "meting サービスの API ベースURL。例: https://music.example.com/api",
+        "desc": "meting API のベース URL（例: https://music.zjkl.dpdns.org/api）",
         "label": "API アドレス"
       },
       "meting": {
         "title": "Meting ソース",
-        "desc": "クエリ条件 JSON: server/type/id。設定すると meting から曲を取得し優先再生します",
+        "desc": "クエリ JSON: server/type/id。type=search のとき id は検索キーワード（既定は「轻涟」）、type=playlist のときはプレイリスト ID",
         "label": "クエリ"
       }
     },
