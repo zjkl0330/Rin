@@ -1,6 +1,7 @@
 import { useContext, useEffect, useRef } from "react";
 import { ClientConfigContext } from "../../state/config";
 import { useColorMode } from "../../utils/darkModeUtils";
+import { startFrameLoop } from "./fx-loop";
 
 /**
  * 氛围背景：单一 canvas 引擎 + 程序化粒子预设，不加载任何图片素材。
@@ -103,9 +104,6 @@ export function AmbientBackground() {
     }
 
     let sprites: Sprite[] = [];
-    let raf = 0;
-    let running = true;
-    let tick = 0;
 
     const resize = () => {
       // canvas 是 fixed inset-0，用 clientWidth 才是真实绘制区域；
@@ -122,7 +120,7 @@ export function AmbientBackground() {
       }
     };
 
-    const drawSprite = (s: Sprite) => {
+    const drawSprite = (s: Sprite, tick: number) => {
       const appearance = AMBIENT_APPEARANCE[type][colorMode];
       ctx.save();
       ctx.translate(s.x, s.y);
@@ -145,7 +143,7 @@ export function AmbientBackground() {
         }
         case "starry": {
           // 亮度随相位闪烁
-          const twinkle = 0.35 + 0.65 * Math.abs(Math.sin(tick * 0.02 + s.phase));
+          const twinkle = 0.35 + 0.65 * Math.abs(Math.sin(tick * 0.04 + s.phase));
           ctx.globalAlpha = twinkle * appearance.alpha;
           ctx.fillStyle = appearance.color;
           ctx.beginPath();
@@ -165,27 +163,28 @@ export function AmbientBackground() {
       ctx.restore();
     };
 
-    const loop = () => {
-      if (!running) {
-        return;
-      }
-      tick += 1;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      for (const s of sprites) {
-        s.x += s.vx + (type === "snow" || type === "sakura" ? Math.sin(tick * 0.01 + s.phase) * 0.3 : 0);
-        s.y += s.vy;
-        s.angle += s.spin;
-        // 出界回卷
-        if (type === "bubbles" ? s.y < -12 : s.y > canvas.height + 12) {
-          Object.assign(s, makeSprite(canvas.width, canvas.height, type, true));
+    const loop = startFrameLoop({
+      fps: 30,
+      draw: (tick) => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // 30fps 下把每帧位移翻倍，等价原先 60fps 的落速
+        const SPEED_SCALE = 2;
+        for (const s of sprites) {
+          s.x += s.vx * SPEED_SCALE + (type === "snow" || type === "sakura" ? Math.sin(tick * 0.02 + s.phase) * 0.3 : 0);
+          s.y += s.vy * SPEED_SCALE;
+          s.angle += s.spin * SPEED_SCALE;
+          // 出界回卷
+          if (type === "bubbles" ? s.y < -12 : s.y > canvas.height + 12) {
+            Object.assign(s, makeSprite(canvas.width, canvas.height, type, true));
+          }
+          if (s.x > canvas.width + 12) s.x = -10;
+          if (s.x < -12) s.x = canvas.width + 10;
+          drawSprite(s, tick);
         }
-        if (s.x > canvas.width + 12) s.x = -10;
-        if (s.x < -12) s.x = canvas.width + 10;
-        drawSprite(s);
-      }
-      ctx.globalAlpha = 1;
-      raf = requestAnimationFrame(loop);
-    };
+        ctx.globalAlpha = 1;
+        return true;
+      },
+    });
 
     const onResize = () => {
       resize();
@@ -195,11 +194,9 @@ export function AmbientBackground() {
     resize();
     seed();
     window.addEventListener("resize", onResize);
-    raf = requestAnimationFrame(loop);
 
     return () => {
-      running = false;
-      cancelAnimationFrame(raf);
+      loop.stop();
       window.removeEventListener("resize", onResize);
     };
   }, [active, type, count, colorMode]);

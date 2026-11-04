@@ -1,6 +1,7 @@
 import { useContext, useEffect, useRef } from "react";
 import { ClientConfigContext } from "../../state/config";
 import { useColorMode } from "../../utils/darkModeUtils";
+import { startFrameLoop } from "./fx-loop";
 
 type Petal = {
   x: number;
@@ -66,56 +67,55 @@ export function FallingSakura() {
 
     const palette = SAKURA_PALETTE[colorMode];
     let petals: Petal[] = [];
-    let raf = 0;
-    let running = true;
-    let tick = 0;
 
     const resize = () => {
       canvas.width = document.documentElement.clientWidth;
       canvas.height = document.documentElement.clientHeight;
     };
 
-    const loop = () => {
-      if (!running) {
-        return;
-      }
-      tick += 1;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (petals.length < PETAL_COUNT && tick % 6 === 0) {
-        petals.push(makePetal(canvas.width, canvas.height, false, palette));
-      }
-      for (const p of petals) {
-        p.y += p.speedY;
-        p.rot += p.rotSpeed;
-        const x = p.x + Math.sin(tick * p.swayFreq + p.phase) * p.swayAmp;
-        if (p.y > canvas.height + 20) {
-          p.y = -20;
-          p.x = Math.random() * canvas.width;
+    // 背景层 30fps；位移/角度按原 60fps 的两倍补偿，观感不变但重绘次数减半。
+    const SPEED_SCALE = 2;
+
+    const loop = startFrameLoop({
+      fps: 30,
+      draw: (tick) => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // 30fps 下每 3 帧补一片，等效原 60fps 的每 6 帧
+        if (petals.length < PETAL_COUNT && tick % 3 === 0) {
+          petals.push(makePetal(canvas.width, canvas.height, false, palette));
         }
-        ctx.save();
-        ctx.translate(x, p.y);
-        ctx.rotate(p.rot);
-        ctx.fillStyle = p.color;
-        ctx.globalAlpha = 0.75;
-        // 花瓣：两段贝塞尔拼出的椭圆瓣形
-        ctx.beginPath();
-        const s = p.size;
-        ctx.moveTo(0, -s / 2);
-        ctx.bezierCurveTo(s / 2, -s / 2, s / 2, s / 2, 0, s / 2);
-        ctx.bezierCurveTo(-s / 2, s / 2, -s / 2, -s / 2, 0, -s / 2);
-        ctx.fill();
-        ctx.restore();
-      }
-      ctx.globalAlpha = 1;
-      raf = requestAnimationFrame(loop);
-    };
+        for (const p of petals) {
+          p.y += p.speedY * SPEED_SCALE;
+          p.rot += p.rotSpeed * SPEED_SCALE;
+          const x = p.x + Math.sin(tick * SPEED_SCALE * p.swayFreq + p.phase) * p.swayAmp;
+          if (p.y > canvas.height + 20) {
+            p.y = -20;
+            p.x = Math.random() * canvas.width;
+          }
+          ctx.save();
+          ctx.translate(x, p.y);
+          ctx.rotate(p.rot);
+          ctx.fillStyle = p.color;
+          ctx.globalAlpha = 0.75;
+          // 花瓣：两段贝塞尔拼出的椭圆瓣形
+          ctx.beginPath();
+          const s = p.size;
+          ctx.moveTo(0, -s / 2);
+          ctx.bezierCurveTo(s / 2, -s / 2, s / 2, s / 2, 0, s / 2);
+          ctx.bezierCurveTo(-s / 2, s / 2, -s / 2, -s / 2, 0, -s / 2);
+          ctx.fill();
+          ctx.restore();
+        }
+        ctx.globalAlpha = 1;
+        return true;
+      },
+    });
 
     resize();
     window.addEventListener("resize", resize);
-    raf = requestAnimationFrame(loop);
+
     return () => {
-      running = false;
-      cancelAnimationFrame(raf);
+      loop.stop();
       window.removeEventListener("resize", resize);
     };
   }, [enabled, disableOnMobile, colorMode]);

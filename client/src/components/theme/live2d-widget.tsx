@@ -64,7 +64,7 @@ import {
  * Live2D 看板娘组件 —— live2d-widget 插件接入版（复刻 Demo autoload.js）
  *
  * 渲染引擎：stevenjoezhang/live2d-widget（827802685 的 fork，暴露 window.initWidget），
- * 与 Demo（https://827802685.github.io/Live2D/）完全同源。
+ * 与 Demo（https://zjkl0330.github.io/Live2D/）完全同源。
  *
  * 模块划分：
  *   - live2d/models.ts   模型清单唯一来源（内置 + 自定义模型、聊天人设）；

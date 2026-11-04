@@ -16,7 +16,6 @@ import {
   uploadFavicon,
 } from "./settings-helpers";
 
-import "../utils/thumb.css";
 
 const WEBHOOK_METHOD_OPTIONS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map((value) => ({
   label: value,

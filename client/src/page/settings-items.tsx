@@ -133,7 +133,12 @@ export function SaveBar({
   const { t } = useTranslation();
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-5">
+    // 底部安全区：iPhone 的 Safari 工具栏会盖住 fixed 元素最后 ~34px，
+    // 保存按钮「有时点不到」多半是被压在工具栏底下。
+    <div
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-4"
+      style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1.25rem)" }}
+    >
       <div className="pointer-events-auto flex max-w-full items-center gap-3 rounded-full border border-black/10 bg-w px-4 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.18)] dark:border-white/10">
         <p className="flex min-w-0 items-center gap-2 whitespace-nowrap text-sm font-medium t-primary">
           <span className="h-2 w-2 shrink-0 rounded-full bg-theme" aria-hidden="true" />
