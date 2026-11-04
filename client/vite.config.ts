@@ -122,7 +122,7 @@ function rinLive2dEngineBundle(): Plugin {
  * Vite dev 中间件把本地 models/ 下每个子目录按插件期望的路径结构暴露出来，
  * 让看板娘在开发环境直接读本地文件（毫秒级），生产构建不受影响（apply:"serve"）。
  *
- * 插件期望的 CDN 结构（与 https://827802685.github.io/Live2D/ 一致）：
+ * 插件期望的 CDN 结构（与 https://zjkl0330.github.io/Live2D/ 一致）：
  *   <cdnRoot>model_list.json              -> {"messages":[...],"models":["<name>", ...]}
  *   <cdnRoot>model/<name>/index.json      -> 模型配置入口（模型库存量清单）
  *   <cdnRoot>model/<name>/<FileReferences> -> index.json 里引用的各文件

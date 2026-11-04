@@ -7,7 +7,7 @@
 //
 // 本模块顶层不碰任何浏览器 API：vite.config.ts 会在 Node 侧 import 这些常量。
 
-export const REMOTE_ENGINE_DIST = "https://827802685.github.io/Live2D/dist/";
+export const REMOTE_ENGINE_DIST = "https://zjkl0330.github.io/Live2D/dist/";
 export const LOCAL_ENGINE_DIST = "/live2d-widget/dist/";
 
 // 需要镜像的文件（相对引擎根）。waifu-tips.js 里 import("./chunk/index2.js")，

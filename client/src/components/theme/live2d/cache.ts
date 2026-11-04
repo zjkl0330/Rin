@@ -16,8 +16,8 @@ const nativeFetch: typeof fetch = window.fetch;
 //    远端模型源。优先 dpdns 加速镜像（国内直连更快、更稳），失败回退 github.io 直连。
 // dev 环境统一由 vite.config.ts 的 rinLive2dLocalCdn 中间件提供本地模型文件。
 export const REMOTE_CDN_CANDIDATES = [
-  "https://raw-githubusercontent-com-gh.zjkl0330.dpdns.org/827802685/Live2D/refs/heads/master/",
-  "https://827802685.github.io/Live2D/",
+  "https://raw-githubusercontent-com-gh.zjkl0330.dpdns.org/zjkl0330/Live2D/refs/heads/master/",
+  "https://zjkl0330.github.io/Live2D/",
 ] as const;
 
 // 各模型优先使用的本地/打包根（非远端 CDN）。BCSZ1.1 生产走随博客分发的打包根。
