@@ -1,6 +1,6 @@
 {
-  "iteration": 20,
-  "since_merge": 2,
+  "iteration": 21,
+  "since_merge": 0,
   "last_merge_iter": 18,
   "history": [
     {
@@ -188,6 +188,14 @@
       "build": "PASS",
       "tests": "PASS",
       "ts": "2026-11-01T16:25:26Z"
+    },
+    {
+      "iter": 21,
+      "action": "基础设施修复（账号迁移）",
+      "summary": "原账号 827802685 被 GitHub 停用，827802685.github.io 与 raw.githubusercontent 全部 404，看板娘两个远端模型源同时失效。Live2D 仓库迁至 zjkl0330/Live2D 并转 public + 开启 Pages（private 仓库在免费计划下不能开 Pages）；engine.ts 的 REMOTE_ENGINE_DIST 与 cache.ts 的两个 CDN 候选改指新地址，10 个关键资源实测全部 200；默认模型维持 furina-mini（2.4MB，无需 Cubism Core）。需注意：新仓库 push 事件不触发 workflow（仅 workflow_dispatch 可跑），Deploy secrets 仍为空，线上尚未更新；827802685/blog-markdown 同告 404，正文图片依赖待核实",
+      "build": "PASS",
+      "tests": "PASS",
+      "ts": "2026-11-04T15:32:26Z"
     }
   ],
   "rejected": [

@@ -4,6 +4,9 @@ dist/**
 .turbo
 *.db
 .env
+# .env.local 靠 *.local 已忽略；备份/变体（.env.local.bak 等）不匹配该规则，单独兜住，
+# 否则一次 `git add -A` 就会把 ADMIN_PASSWORD / JWT_SECRET 推上去
+.env.local*
 .secrets
 test.ts
 *.log
