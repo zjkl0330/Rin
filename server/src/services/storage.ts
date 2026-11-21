@@ -22,31 +22,27 @@ function isImageUpload(file: File) {
     return file.type.split(';')[0]!.trim().startsWith('image/');
 }
 
-/**
- * Objects are replayed to the browser from the same origin as the app, with the
- * content type that was supplied at upload time. Anything scriptable therefore
- * has to be served inert.
- */
-const BLOB_SAFETY_HEADERS: Record<string, string> = {
-    'X-Content-Type-Options': 'nosniff',
-    'Content-Security-Policy': "default-src 'none'; sandbox",
-};
-
 export function StorageService(): Hono {
     const app = new Hono();
 
     // POST /storage
     app.post('/', async (c: AppContext) => {
         const uid = c.get('uid');
+        const admin = c.get('admin');
         const env = c.get('env');
-        
-        const body = await profileAsync(c, 'storage_parse', () => c.req.parseBody());
-        const rawKey = typeof body.key === 'string' && body.key.length > 0 ? body.key : undefined;
-        const file = body.file instanceof File ? body.file : undefined;
-        
+        // Only administrators may write to storage. This check runs before the
+        // body is parsed so anonymous or regular users can never reach an
+        // upload, regardless of what they send.
         if (!uid) {
             return c.text('Unauthorized', 401);
         }
+        if (!admin) {
+            return c.text('Forbidden', 403);
+        }
+
+        const body = await profileAsync(c, 'storage_parse', () => c.req.parseBody());
+        const rawKey = typeof body.key === 'string' && body.key.length > 0 ? body.key : undefined;
+        const file = body.file instanceof File ? body.file : undefined;
 
         if (!file) {
             return c.text('No file uploaded', 400);
@@ -86,6 +82,46 @@ export function StorageService(): Hono {
     return app;
 }
 
+
+/**
+ * Files are served from the site origin, so an SVG or HTML object placed in
+ * storage would otherwise execute as active content. Every publicly readable
+ * object is forced to a passive disposition and given a non-scriptable
+ * Content-Type; inline sniffing is disabled as well.
+ */
+const ACTIVE_CONTENT_TYPES = new Set([
+    'text/html',
+    'application/xhtml+xml',
+    'image/svg+xml',
+    'text/xml',
+    'application/xml',
+]);
+
+function buildPublicObjectHeaders(source: Headers) {
+    const headers = new Headers();
+    // Keep only approved metadata, including the encoding of the unchanged body.
+    // Apply our security headers below instead of trusting stored values.
+    for (const name of ['Content-Encoding', 'Content-Length', 'ETag', 'Last-Modified', 'Cache-Control']) {
+        const value = source.get(name);
+        if (value) {
+            headers.set(name, value);
+        }
+    }
+
+    const contentType = (source.get('content-type') || 'application/octet-stream').toLowerCase();
+    const active = [...ACTIVE_CONTENT_TYPES].some((type) => contentType.startsWith(type));
+
+    headers.set('Content-Type', active ? 'application/octet-stream' : contentType);
+    headers.set('Content-Disposition', active ? 'attachment' : 'inline');
+    headers.set('X-Content-Type-Options', 'nosniff');
+    // Blob bodies are user supplied; never let them run script on our origin.
+    headers.set('Content-Security-Policy', "default-src 'none'; sandbox");
+    headers.set('Cross-Origin-Resource-Policy', 'cross-origin');
+    headers.set('Access-Control-Allow-Origin', '*');
+
+    return headers;
+}
+
 export function BlobService(): Hono {
     const app = new Hono();
 
@@ -104,14 +140,9 @@ export function BlobService(): Hono {
                 return c.text("Not found", 404);
             }
 
-            const headers = new Headers(response.headers);
-            for (const [name, value] of Object.entries(BLOB_SAFETY_HEADERS)) {
-                headers.set(name, value);
-            }
-
             return new Response(response.body, {
                 status: response.status,
-                headers,
+                headers: buildPublicObjectHeaders(response.headers),
             });
         } catch (error) {
             console.error("Blob fetch failed:", error);

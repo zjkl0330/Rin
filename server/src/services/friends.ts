@@ -13,6 +13,26 @@ import { friends } from "../db/schema";
 import { notify } from "../utils/webhook";
 import { resolveWebhookConfig } from "./config-helpers";
 
+/**
+ * Friend URLs are later requested server-side by the health crontab, so they
+ * must at least be well formed absolute http(s) URLs with a host.
+ */
+export function isAllowedFriendUrl(value: unknown): value is string {
+    if (typeof value !== 'string') {
+        return false;
+    }
+    let url: URL;
+    try {
+        url = new URL(value);
+    } catch {
+        return false;
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        return false;
+    }
+    return url.hostname.length > 0;
+}
+
 export function FriendService(): Hono {
     const app = new Hono();
 
@@ -91,7 +111,6 @@ export function FriendService(): Hono {
         if (!enable && !admin) {
             return c.text('Friend Link Apply Disabled', 403);
         }
-
         const parsed = parseSchema<{ name: string; desc: string; avatar: string; url: string }>(
             friendCreateSchema,
             body,
@@ -101,6 +120,12 @@ export function FriendService(): Hono {
         }
 
         const { name, desc, avatar, url } = parsed.data;
+
+        // Friend URLs are fetched later by the health crontab; only absolute
+        // http(s) targets with a host may be stored.
+        if (!isAllowedFriendUrl(url)) {
+            return c.text('Invalid friend url', 400);
+        }
 
         if (!uid) {
             return c.text('Unauthorized', 401);
@@ -194,6 +219,10 @@ export function FriendService(): Hono {
         }
 
         const { name, desc, avatar, url, rss, accepted, sort_order } = parsed.data;
+
+        if (url !== undefined && url !== null && url !== '' && !isAllowedFriendUrl(url)) {
+            return c.text('Invalid friend url', 400);
+        }
 
         let finalAccepted = accepted;
         let finalSortOrder = sort_order;
