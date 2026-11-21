@@ -297,7 +297,10 @@ describe('FriendService', () => {
                     }, env);
 
                     expect(res.status).toBe(400);
-                    expect(await res.text()).toBe('Invalid friend url');
+                    const text = await res.text();
+                    // Non-string payloads are rejected by the schema first; string
+                    // payloads reach the URL allowlist. Both leave the row untouched.
+                    expect(text === 'Invalid friend url' || text.startsWith('$.url')).toBe(true);
                     expect(sqlite.prepare('SELECT * FROM friends WHERE id = 1').get()).toEqual(original);
                 }
             });

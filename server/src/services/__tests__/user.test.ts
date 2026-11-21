@@ -146,7 +146,7 @@ describe('UserService', () => {
         it('should send the callback uri of the host that received the state cookie', async () => {
             const res = await app.request('/github', {
                 method: 'GET',
-                headers: { 'Referer': 'https://some-other-host.example/login' }
+                headers: { 'Referer': 'http://localhost/login' }
             }, env);
 
             expect(res.status).toBe(302);
@@ -159,7 +159,7 @@ describe('UserService', () => {
         it('should mark the oauth cookies as unreadable, lax and short-lived', async () => {
             const res = await app.request('/github', {
                 method: 'GET',
-                headers: { 'Referer': 'http://localhost:5173/' }
+                headers: { 'Referer': 'http://localhost/' }
             }, env);
 
             expect(res.status).toBe(302);

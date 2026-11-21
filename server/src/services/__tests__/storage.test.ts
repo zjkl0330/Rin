@@ -363,7 +363,7 @@ describe('StorageService', () => {
             const r2Env = createMockEnv({
                 R2_BUCKET: { put: async () => ({}) } as unknown as R2Bucket,
             });
-            const r2App = createAppWithEnv(r2Env, 1);
+            const r2App = createAppWithEnv(r2Env, 1, true);
 
             const formData = new FormData();
             formData.append('key', 'test.png');
@@ -381,7 +381,7 @@ describe('StorageService', () => {
             const r2Env = createMockEnv({
                 R2_BUCKET: { put: async () => ({}) } as unknown as R2Bucket,
             });
-            const r2App = createAppWithEnv(r2Env, 1);
+            const r2App = createAppWithEnv(r2Env, 1, true);
 
             const formData = new FormData();
             formData.append('key', 'payload.html');
@@ -403,7 +403,7 @@ describe('StorageService', () => {
             const r2Env = createMockEnv({
                 R2_BUCKET: { put: async () => ({}) } as unknown as R2Bucket,
             });
-            const r2App = createAppWithEnv(r2Env, 1);
+            const r2App = createAppWithEnv(r2Env, 1, true);
 
             const formData = new FormData();
             formData.append('key', 'huge.png');
@@ -433,7 +433,7 @@ describe('StorageService', () => {
                 S3_ACCESS_KEY_ID: '',
                 S3_SECRET_ACCESS_KEY: '',
             });
-            const r2App = createAppWithEnv(r2Env, 1);
+            const r2App = createAppWithEnv(r2Env, 1, true);
 
             const formData = new FormData();
             formData.append('file', new File(['test'], 'fallback.png', { type: 'image/png' }));
