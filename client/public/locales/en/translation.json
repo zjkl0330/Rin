@@ -579,7 +579,9 @@
         "editorial": "A more expressive card with a tinted surface, stronger hierarchy, and gallery-like framing.",
         "cover": "A large image spans the card top, with a roomier text block below.",
         "minimal": "A quiet, borderless card with generous whitespace and restrained type."
-      }
+      },
+      "preview_sample_title": "A quieter card with stronger hierarchy",
+      "preview_sample_summary": "This preview shows how article lists feel before you save. The image, metadata, and tags all respond to the selected feed card style."
     },
     "feed_layout": {
       "title": "Feed layout",

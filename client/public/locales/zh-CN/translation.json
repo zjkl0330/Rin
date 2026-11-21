@@ -579,7 +579,9 @@
         "editorial": "更有展示感的卡片，带轻微主题染色、更强层级和类似画册的 framing。",
         "cover": "大图封面通栏置顶，正文在下。",
         "minimal": "无边框的安静卡片，留白充足、文字克制。"
-      }
+      },
+      "preview_sample_title": "更安静的卡片，更强的层次感",
+      "preview_sample_summary": "这是文章列表在保存前的预览效果。图片、元信息和标签都会随所选卡片样式变化。"
     },
     "feed_layout": {
       "title": "文章列表布局",

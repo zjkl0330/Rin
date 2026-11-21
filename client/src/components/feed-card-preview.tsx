@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { attachImageMetadataToUrl } from "../utils/image-upload";
 import { FeedCard, type FeedCardProps } from "./feed_card";
 import { type FeedCardVariant } from "./feed-card-options";
@@ -12,11 +13,8 @@ const PREVIEW_IMAGE_URL = attachImageMetadataToUrl(
   },
 );
 
-const PREVIEW_PROPS: FeedCardProps = {
+const PREVIEW_PROPS: Omit<FeedCardProps, "title" | "summary"> = {
   id: "preview-feed-card",
-  title: "A quieter card with stronger hierarchy",
-  summary:
-    "This preview shows how article lists feel before you save. The image, metadata, and tags all respond to the selected feed card style.",
   avatar: PREVIEW_IMAGE_URL,
   hashtags: [
     { id: 1, name: "design" },
@@ -42,13 +40,23 @@ export function FeedCardPreview({
   variant: FeedCardVariant;
   onClick: () => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <SettingsPreviewCard
       title={title}
       description={description}
       selected={selected}
       onClick={onClick}
-      preview={<FeedCard {...PREVIEW_PROPS} preview variant={variant} />}
+      preview={
+        <FeedCard
+          {...PREVIEW_PROPS}
+          preview
+          variant={variant}
+          title={t("settings.feed_card.preview_sample_title")}
+          summary={t("settings.feed_card.preview_sample_summary")}
+        />
+      }
     />
   );
 }

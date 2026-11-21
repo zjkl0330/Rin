@@ -579,7 +579,9 @@
         "editorial": "更有展示感的卡片，帶有淡淡主題染色、更強層次，以及類似畫冊的 framing。",
         "cover": "大圖封面置頂，正文在下。",
         "minimal": "無邊界的簡約卡片，留白充足、文字克制。"
-      }
+      },
+      "preview_sample_title": "更安靜的卡片，更強的層次感",
+      "preview_sample_summary": "這是文章列表在儲存前的預覽效果。圖片、元資訊與標籤都會隨所選卡片樣式變化。"
     },
     "feed_layout": {
       "title": "文章列表版面",
