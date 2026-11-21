@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { buildServerConfigResponse, getClientConfigWithDefaults, resolveWebhookConfig } from "../config-helpers";
+import { buildServerConfigResponse, getClientConfigWithDefaults, persistRegularConfig, resolveWebhookConfig } from "../config-helpers";
 import { cleanupTestDB, createMockDB } from "../../../tests/fixtures";
 
 describe("buildServerConfigResponse", () => {
@@ -106,6 +106,44 @@ describe("getClientConfigWithDefaults", () => {
         const config = await getClientConfigWithDefaults(clientConfigWith([]), emptyEnv as any);
 
         expect(config["site.page_size"]).toBe(5);
+    });
+});
+
+describe("persistRegularConfig", () => {
+    it("uses setQuick per key and never triggers a full-table save()", async () => {
+        // 全表 save() 会对每个键发一次 D1 写：33 个键 ≈ 20s。
+        // 逐键 setQuick 只发单行 upsert，写入量与键数成正比但无全表重刷。
+        const quickWrites: [string, unknown][] = [];
+        let fullSaves = 0;
+        const config = {
+            async all() { return new Map<string, unknown>(); },
+            async set() { throw new Error("set() should not be used when setQuick exists"); },
+            async setQuick(key: string, value: unknown) { quickWrites.push([key, value]); },
+            async save() { fullSaves += 1; },
+        };
+
+        await persistRegularConfig(config as any, {
+            "site.name": "bai",
+            "theme.scheme": "ocean",
+        });
+
+        expect(quickWrites).toEqual([["site.name", "bai"], ["theme.scheme", "ocean"]]);
+        expect(fullSaves).toBe(0);
+    });
+
+    it("falls back to set(key, ..., false) + save() when setQuick is unavailable", async () => {
+        const writes: [string, unknown, boolean][] = [];
+        let fullSaves = 0;
+        const config = {
+            async all() { return new Map<string, unknown>(); },
+            async set(key: string, value: unknown, save?: boolean) { writes.push([key, value, !!save]); },
+            async save() { fullSaves += 1; },
+        };
+
+        await persistRegularConfig(config as any, { "site.name": "bai" });
+
+        expect(writes).toEqual([["site.name", "bai", false]]);
+        expect(fullSaves).toBe(1);
     });
 });
 

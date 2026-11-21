@@ -11,6 +11,7 @@ type ConfigMapLike = {
   all(): Promise<Map<string, unknown>>;
   set(key: string, value: unknown, save?: boolean): Promise<void>;
   save(): Promise<void>;
+  setQuick?(key: string, value: unknown): Promise<void>;
 };
 
 type ConfigReaderLike = {
@@ -166,6 +167,15 @@ export async function persistRegularConfig(
   config: ConfigMapLike,
   updates: Record<string, unknown>,
 ) {
+  // setQuick 逐键单行 upsert；旧的 set(...,false)+save() 会在 save() 里对本 type 的
+  // 每个键各发一次 D1 写（33 个键实测约 20s），是配置保存变慢的根因。
+  if (typeof config.setQuick === "function") {
+    for (const key in updates) {
+      await config.setQuick(key, updates[key]);
+    }
+    return;
+  }
+
   for (const key in updates) {
     await config.set(key, updates[key], false);
   }
