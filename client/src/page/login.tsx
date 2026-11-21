@@ -79,6 +79,7 @@ export function LoginPage() {
                             placeholder={t('login.username.placeholder')}
                             disabled={isLoading}
                             autofocus
+                            onSubmit={handleLogin}
                         />
                         <Input
                             value={password}

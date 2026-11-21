@@ -1789,6 +1789,10 @@ export function Live2DWidget() {
             base,
             // 画布宽度：夹在加载盒的宽度里，避免小容器被 420px 默认值撑破
             size: Math.max(200, Math.min(420, boxW)),
+            // 鼠标跟随：渲染器已在 zjkl0330/Live2D 修复身体跟随权重（0.35→0.06，
+            // 头仍 100%），并给手臂加了待机钟摆，不再拉扯身体、手臂也会自然动。
+            // 这里恢复 follow，头眼跟随 + 手臂动作都保留。
+            follow: true,
             // 关掉渲染器自带的拖动：它只改自己画布的 transform，既不保存位置，
             // 也会和外层的整体拖拽叠加成"双倍位移"。拖动统一交给外层 React 处理。
             draggable: false,
