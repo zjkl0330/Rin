@@ -25,24 +25,29 @@ export function Preloader() {
     sessionStorage.setItem(SESSION_KEY, "1");
 
     setPhase("showing");
-    let timer = 0;
+    let left = false;
     const leave = () => {
+      if (left) return;
+      left = true;
       setPhase((prev) => (prev === "showing" ? "leaving" : prev));
-      timer = window.setTimeout(() => setPhase("hidden"), 480);
+      window.setTimeout(() => setPhase("hidden"), 480);
     };
     if (document.readyState === "complete") {
-      timer = window.setTimeout(leave, 500);
+      window.setTimeout(leave, 500);
     } else {
       window.addEventListener("load", leave, { once: true });
       // 兜底：资源卡住也最多 2.5s 收场
-      const fallback = window.setTimeout(leave, 2500);
-      return () => {
-        window.clearTimeout(timer);
-        window.clearTimeout(fallback);
-        window.removeEventListener("load", leave);
-      };
+      window.setTimeout(leave, 2500);
     }
-    return () => window.clearTimeout(timer);
+    return () => {
+      // 这里**不能**清掉负责 leave 的定时器。
+      // StrictMode 双跑 / 配置异步加载（enabled 从 false 变 true）都会让 effect 重入：
+      // React 先跑 cleanup 再跑新 effect。cleanup 若把 timer 清掉，新 effect 又因为
+      // session key 已写而直接 return —— 定时器就此丢失，遮罩永远停在 showing（实测卡死）。
+      // leave() 的 left 标志保证重复触发无害，残留 timer 最多存活 2.5s，
+      // 且组件真卸载后 setState 无副作用。
+      window.removeEventListener("load", leave);
+    };
   }, [enabled]);
 
   if (phase === "hidden") {
