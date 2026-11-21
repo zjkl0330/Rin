@@ -67,7 +67,9 @@ export function Header({ children }: { children?: React.ReactNode }) {
       : `fixed inset-x-0 top-0 z-40 transition-transform duration-300 ${
           headerBehavior === "reveal" && !isRevealed ? "-translate-y-full" : "translate-y-0"
         }`;
-  const spacerClassName = !useTopHeader || headerBehavior === "static" ? "h-0" : "h-20";
+  // centered 是两行堆叠的头部，比单行布局高，固定定位时需要更大的占位避免压住正文
+  const spacerClassName =
+    !useTopHeader || headerBehavior === "static" ? "h-0" : headerLayout === "centered" ? "h-28" : "h-20";
 
   return (
     <>

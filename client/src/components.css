@@ -10,3 +10,31 @@
         @apply no-underline text-neutral-300 dark:text-neutral-600 ml-1 text-base font-normal align-baseline transition hover:text-theme;
     }
 }
+
+@layer components {
+    /* 时间轴布局：容器左边框充当竖线，每个子项 ::before 画轴上的节点。 */
+    .rin-feed-timeline {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 1.25rem;
+        padding-left: 2rem;
+        border-left: 2px solid var(--border-default, #e5e5e5);
+    }
+
+    .rin-feed-timeline > * {
+        position: relative;
+    }
+
+    .rin-feed-timeline > *::before {
+        content: "";
+        position: absolute;
+        top: 2rem;
+        left: calc(-2rem - 7px);
+        width: 12px;
+        height: 12px;
+        border-radius: 9999px;
+        background-color: var(--theme, #5ab0d8);
+        box-shadow: 0 0 0 4px var(--surface-raised, #fff);
+    }
+}

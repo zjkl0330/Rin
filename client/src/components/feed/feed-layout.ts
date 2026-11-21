@@ -11,6 +11,8 @@ export function getFeedListClass(layout: string, extraClass = ""): string {
         return "wauto columns-1 gap-5 md:columns-2";
       case "magazine":
         return "wauto grid grid-cols-1 gap-4 md:grid-cols-2";
+      case "timeline":
+        return "wauto rin-feed-timeline";
       default:
         return "wauto flex flex-col";
     }

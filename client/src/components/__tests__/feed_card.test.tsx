@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { normalizeFeedCardVariant } from "../feed-card-options";
 
 vi.mock("react-i18next", () => ({
     useTranslation: () => ({
@@ -137,5 +138,26 @@ describe("FeedCard", () => {
         const { container } = renderCard({ variant: "editorial" });
 
         expect(container.querySelector('[class*="rounded-[28px]"]')).not.toBeNull();
+    });
+
+    it("renders the minimal variant with a borderless, spacious treatment", () => {
+        const { container } = renderCard({ variant: "minimal", avatar: "https://example.com/a.png" });
+
+        expect(screen.getByText("Hello world")).toBeTruthy();
+        expect(screen.getByText("A short summary")).toBeTruthy();
+        // 极简卡片：大留白、无阴影，封面更矮且无圆角
+        expect(container.querySelector('[class*="py-8"]')).not.toBeNull();
+        expect(container.querySelector('[class*="shadow-light"]')).toBeNull();
+        expect(container.querySelector('[class*="max-h-52"]')).not.toBeNull();
+    });
+});
+
+describe("normalizeFeedCardVariant", () => {
+    it("accepts the minimal variant", () => {
+        expect(normalizeFeedCardVariant("minimal")).toBe("minimal");
+    });
+
+    it("falls back to default for unknown values", () => {
+        expect(normalizeFeedCardVariant("bogus")).toBe("default");
     });
 });

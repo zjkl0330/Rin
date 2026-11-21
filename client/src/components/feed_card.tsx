@@ -21,7 +21,10 @@ function FeedCardImage({ src, variant }: { src: string; variant: FeedCardVariant
                 // 侧栏/单列版式下卡片宽度接近 760px，按原图比例撑开会变成近整屏海报
                 // （实测最高 569px），限制高度后封面卡才能和多列版式共存。
                 ? "relative flex max-h-[380px] w-full items-center overflow-hidden"
-                : "relative mb-2 flex max-h-80 w-full flex-row items-center overflow-hidden rounded-xl";
+                : variant === "minimal"
+                    // 极简样式弱化封面：更矮、无圆角，让图片退居背景而非视觉焦点。
+                    ? "relative flex max-h-52 w-full items-center overflow-hidden"
+                    : "relative mb-2 flex max-h-80 w-full flex-row items-center overflow-hidden rounded-xl";
 
     useEffect(() => {
         if (!blurhash || !canvasRef.current) {
@@ -95,6 +98,15 @@ const FEED_CARD_STYLES: Record<
         meta: "text-xs t-muted",
         summary: "line-clamp-3 text-sm t-secondary",
         title: "text-lg font-bold t-primary text-pretty overflow-hidden",
+    },
+    minimal: {
+        card: "my-3 inline-block w-full break-inside-avoid bg-transparent px-1 py-8 duration-300",
+        content: "",
+        imageWrap: "mb-5",
+        meta: "text-xs tracking-wide t-muted",
+        // 自带 mt-3：正文拼接处 minimal 会落到无额外 margin 的 else 分支。
+        summary: "mt-3 line-clamp-3 text-[15px] leading-7 text-pretty t-secondary",
+        title: "text-lg font-medium tracking-tight t-primary text-pretty overflow-hidden",
     },
 };
 
