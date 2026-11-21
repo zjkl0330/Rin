@@ -546,12 +546,14 @@
       "options": {
         "classic": "經典置中",
         "compact": "極簡純文字",
-        "sidebar": "側欄雙列（實驗性）"
+        "sidebar": "側欄雙列（實驗性）",
+        "centered": "置中堆疊"
       },
       "preview": {
         "classic": "品牌、置中導覽與操作區維持目前這套平衡配置。",
         "compact": "幾乎移除所有裝飾，只保留最必要的資訊與操作。",
-        "sidebar": "左正文右側欄，窄欄摺疊單列。"
+        "sidebar": "左正文右側欄，窄欄摺疊單列。",
+        "centered": "品牌獨立一行置中，導覽列置中排在下方，操作按鈕左右對稱分佈。"
       }
     },
     "header_behavior": {
@@ -569,12 +571,14 @@
       "options": {
         "default": "預設",
         "editorial": "雜誌風",
-        "cover": "大圖封面（實驗性）"
+        "cover": "大圖封面（實驗性）",
+        "minimal": "極簡"
       },
       "preview": {
         "default": "目前這套緊湊卡片，表面乾淨，裝飾最少。",
         "editorial": "更有展示感的卡片，帶有淡淡主題染色、更強層次，以及類似畫冊的 framing。",
-        "cover": "大圖封面置頂，正文在下。"
+        "cover": "大圖封面置頂，正文在下。",
+        "minimal": "無邊界的簡約卡片，留白充足、文字克制。"
       }
     },
     "feed_layout": {
@@ -584,7 +588,8 @@
       "options": {
         "list": "單欄",
         "masonry": "瀑布流",
-        "magazine": "雜誌網格（實驗性）"
+        "magazine": "雜誌網格（實驗性）",
+        "timeline": "時間軸"
       },
       "preview": {
         "list": "穩定的單欄閱讀節奏，每列只放一張卡片。",
@@ -676,6 +681,21 @@
     "wordpress": {
       "desc": "上傳 WordPress 匯出的 XML 文件",
       "title": "從 WordPress 匯入"
+    },
+    "appearance": {
+      "title": "整合設定",
+      "desc": "集中管理頁面外觀：導覽、列表與卡片樣式，並可匯出為 JSON 備份或分享。",
+      "export_title": "外觀設定匯出",
+      "export_desc": "以下是目前的外觀設定（僅含導覽與文章列表相關鍵，不含金鑰）。可複製或下載儲存。",
+      "copy": "複製 JSON",
+      "copy_success": "已複製到剪貼簿",
+      "copy_failed": "複製失敗，請手動選取文字",
+      "download": "下載 JSON",
+      "import_desc": "貼上先前匯出的 JSON，一鍵套用外觀設定（儲存後生效）。",
+      "import_placeholder": "在此貼上外觀設定 JSON…",
+      "import": "匯入設定",
+      "import_success": "已匯入，請點擊儲存生效",
+      "import_invalid": "JSON 格式無效或不含外觀設定"
     }
   },
   "sitename": "網站名稱",

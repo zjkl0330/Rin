@@ -546,12 +546,14 @@
       "options": {
         "classic": "Classic centered",
         "compact": "Minimal",
-        "sidebar": "Sidebar two-column (experimental)"
+        "sidebar": "Sidebar two-column (experimental)",
+        "centered": "Centered stacked"
       },
       "preview": {
         "classic": "Brand, centered navigation, and actions stay balanced like the current header.",
         "compact": "A text-first header with almost no decoration, keeping only the essential information.",
-        "sidebar": "Main content on the left with a sticky sidebar (profile, tags, table of contents). Collapses to one column on narrow screens."
+        "sidebar": "Main content on the left with a sticky sidebar (profile, tags, table of contents). Collapses to one column on narrow screens.",
+        "centered": "Brand name on top and centered, navigation stacked below it, with action buttons balanced on both sides."
       }
     },
     "header_behavior": {
@@ -569,12 +571,14 @@
       "options": {
         "default": "Default",
         "editorial": "Editorial",
-        "cover": "Cover-first (experimental)"
+        "cover": "Cover-first (experimental)",
+        "minimal": "Minimal"
       },
       "preview": {
         "default": "The current compact card with a simple surface and minimal framing.",
         "editorial": "A more expressive card with a tinted surface, stronger hierarchy, and gallery-like framing.",
-        "cover": "A large image spans the card top, with a roomier text block below."
+        "cover": "A large image spans the card top, with a roomier text block below.",
+        "minimal": "A quiet, borderless card with generous whitespace and restrained type."
       }
     },
     "feed_layout": {
@@ -584,7 +588,8 @@
       "options": {
         "list": "Single column",
         "masonry": "Masonry",
-        "magazine": "Magazine grid (experimental)"
+        "magazine": "Magazine grid (experimental)",
+        "timeline": "Timeline"
       },
       "preview": {
         "list": "A steady reading flow with one card per row.",
@@ -676,6 +681,21 @@
     "wordpress": {
       "desc": "Upload the XML file exported from WordPress",
       "title": "Import from WordPress"
+    },
+    "appearance": {
+      "title": "Appearance Preset",
+      "desc": "Manage page appearance in one place — navigation, feed layout and card style — and export it as JSON.",
+      "export_title": "Export appearance",
+      "export_desc": "Current appearance settings (navigation and feed keys only, no secrets). Copy or download to save.",
+      "copy": "Copy JSON",
+      "copy_success": "Copied to clipboard",
+      "copy_failed": "Copy failed, please select the text manually",
+      "download": "Download JSON",
+      "import_desc": "Paste a previously exported JSON to apply the appearance (save to take effect).",
+      "import_placeholder": "Paste appearance JSON here…",
+      "import": "Import",
+      "import_success": "Imported — click Save to apply",
+      "import_invalid": "Invalid JSON or no appearance keys found"
     }
   },
   "sitename": "Site Name",

@@ -31,6 +31,7 @@ const QueueStatusPage = lazy(() => import("../page/queue-status").then((m) => ({
 import { SearchPage } from "../page/search";
 const Settings = lazy(() => import("../page/settings").then((m) => ({ default: m.Settings })));
 const SettingsTheme = lazy(() => import("../page/settings-theme").then((m) => ({ default: m.SettingsTheme })));
+const SettingsAppearance = lazy(() => import("../page/settings-appearance").then((m) => ({ default: m.SettingsAppearance })));
 import { TimelinePage } from "../page/timeline";
 import { ToolsPage } from "../page/tools";
 const ToolsAdminPage = lazy(() => import("../page/tools-admin").then((m) => ({ default: m.ToolsAdminPage })));
@@ -91,6 +92,10 @@ export function AppRoutes() {
 
       <AdminRoute path="/admin/theme" requirePermission title={t("theme.title")} description={t("admin.theme_description")}>
         <SettingsTheme />
+      </AdminRoute>
+
+      <AdminRoute path="/admin/appearance" requirePermission title={t("settings.appearance.title")} description={t("settings.appearance.desc")}>
+        <SettingsAppearance />
       </AdminRoute>
 
       <AdminRoute path="/admin/health" requirePermission title={t("health.title")} description={t("admin.health_description")}>
