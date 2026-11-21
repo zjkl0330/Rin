@@ -344,8 +344,11 @@ export default defineConfig(({ mode }) => {
       ...(isDev ? [rinLive2dLocalCdn(), rinLive2dEngineDevMiddleware()] : []),
       rinLive2dBundledModel(),
       rinLive2dEngineBundle(),
-      // Only open visualizer in build mode
-      visualizer({ open: !isDev })
+      // 只在 build 模式生成 bundle 分析报告。
+      // open 固定为 false：open: true 会在构建结束后尝试拉起浏览器，在无 GUI 环境
+      // （CI runner / 远程 shell）这一步可能挂住或报错。报告在 dist/client/stats.html，
+      // 需要时手动打开即可。
+      visualizer({ open: false, filename: "dist/client/stats.html" })
     ],
     server: {
       proxy: {
