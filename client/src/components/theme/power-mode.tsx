@@ -1,5 +1,6 @@
 import { useContext, useEffect, useRef } from "react";
 import { ClientConfigContext } from "../../state/config";
+import { startFrameLoop } from "./fx-loop";
 
 type Spark = {
   x: number;
@@ -55,8 +56,6 @@ export function PowerMode() {
     }
 
     let sparks: Spark[] = [];
-    let raf = 0;
-    let running = true;
 
     const resize = () => {
       canvas.width = document.documentElement.clientWidth;
@@ -96,38 +95,37 @@ export function PowerMode() {
       const x = Math.min(measureCaretX(target), rect.right - 4);
       const y = rect.top + rect.height / 2;
       spawn(x, y);
+      loop.wake();
       // 抖动：短暂挂类，动画结束自动恢复
       target.classList.add("rin-power-shake");
       window.setTimeout(() => target.classList.remove("rin-power-shake"), 120);
     };
 
-    const loop = () => {
-      if (!running) {
-        return;
-      }
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      sparks = sparks.filter((s) => s.life < s.maxLife);
-      for (const s of sparks) {
-        s.life += 1;
-        s.x += s.vx;
-        s.y += s.vy;
-        s.vy += 0.04;
-        const alpha = Math.max(0, 1 - s.life / s.maxLife);
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = s.color;
-        ctx.fillRect(s.x, s.y, s.size, s.size);
-      }
-      ctx.globalAlpha = 1;
-      raf = requestAnimationFrame(loop);
-    };
+    const loop = startFrameLoop({
+      draw: () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        sparks = sparks.filter((s) => s.life < s.maxLife);
+        for (const s of sparks) {
+          s.life += 1;
+          s.x += s.vx;
+          s.y += s.vy;
+          s.vy += 0.04;
+          const alpha = Math.max(0, 1 - s.life / s.maxLife);
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = s.color;
+          ctx.fillRect(s.x, s.y, s.size, s.size);
+        }
+        ctx.globalAlpha = 1;
+        // 打字停止即无火花：让循环休眠，等下一次 input 唤醒。
+        return sparks.length > 0;
+      },
+    });
 
     resize();
     window.addEventListener("resize", resize);
     document.addEventListener("input", onInput, true);
-    raf = requestAnimationFrame(loop);
     return () => {
-      running = false;
-      cancelAnimationFrame(raf);
+      loop.stop();
       window.removeEventListener("resize", resize);
       document.removeEventListener("input", onInput, true);
     };

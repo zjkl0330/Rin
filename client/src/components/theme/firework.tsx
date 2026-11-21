@@ -1,6 +1,7 @@
 import { useContext, useEffect, useRef } from "react";
 import { ClientConfigContext } from "../../state/config";
 import { useColorMode } from "../../utils/darkModeUtils";
+import { startFrameLoop } from "./fx-loop";
 
 type Particle = {
   x: number;
@@ -69,8 +70,6 @@ export function Firework() {
     }
 
     let particles: Particle[] = [];
-    let raf = 0;
-    let running = true;
 
     const resize = () => {
       canvas.width = document.documentElement.clientWidth;
@@ -84,40 +83,39 @@ export function Firework() {
       }
     };
 
-    const loop = () => {
-      if (!running) {
-        return;
-      }
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      particles = particles.filter((p) => p.life < p.maxLife);
-      for (const p of particles) {
-        p.life += 1;
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vy += GRAVITY;
-        const alpha = Math.max(0, 1 - p.life / p.maxLife);
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size * alpha + 0.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-      raf = requestAnimationFrame(loop);
-    };
+    const loop = startFrameLoop({
+      draw: () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        particles = particles.filter((p) => p.life < p.maxLife);
+        for (const p of particles) {
+          p.life += 1;
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vy += GRAVITY;
+          const alpha = Math.max(0, 1 - p.life / p.maxLife);
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size * alpha + 0.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        // 粒子烧完就停循环，下一次 pointerdown 再 wake()，避免全屏 clearRect 空转。
+        return particles.length > 0;
+      },
+    });
 
     const onPointerDown = (event: PointerEvent) => {
       spawn(event.clientX, event.clientY);
+      loop.wake();
     };
 
     resize();
     window.addEventListener("resize", resize);
     window.addEventListener("pointerdown", onPointerDown);
-    raf = requestAnimationFrame(loop);
 
     return () => {
-      running = false;
-      cancelAnimationFrame(raf);
+      loop.stop();
       window.removeEventListener("resize", resize);
       window.removeEventListener("pointerdown", onPointerDown);
     };
